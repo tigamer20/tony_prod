@@ -7,7 +7,7 @@ import { prisma } from "../db.js";
 import { badRequest, forbidden, HttpError, notFound, param, parse } from "../lib/http.js";
 import { AVATAR_COLORS, memberDetailSelect, publicUserSelect } from "../lib/serialize.js";
 import { ALL_PERMISSION_KEYS, PERMISSION_CATALOG } from "../permissions.js";
-import { emitAll, onlineUserIds } from "../realtime.js";
+import { disconnectUser, emitAll, onlineUserIds } from "../realtime.js";
 
 export const teamRouter = Router();
 
@@ -16,7 +16,8 @@ export const teamRouter = Router();
 teamRouter.get("/users", async (req, res) => {
   const manager = can(req.user!, "members.manage");
   const users = await prisma.user.findMany({
-    where: manager ? {} : { status: "ACTIVE" },
+    // The "Deleted user" placeholder is never listed.
+    where: { isSystem: false, ...(manager ? {} : { status: "ACTIVE" as const }) },
     select: manager ? memberDetailSelect : publicUserSelect,
     orderBy: { displayName: "asc" },
   });
@@ -33,7 +34,7 @@ const memberPatch = z.object({
 teamRouter.patch("/users/:id", requirePerm("members.manage"), async (req, res) => {
   const actor = req.user!;
   const target = await prisma.user.findUnique({ where: { id: param(req, "id") } });
-  if (!target) throw notFound("Member not found.");
+  if (!target || target.isSystem) throw notFound("Member not found.");
   const body = parse(memberPatch, req.body);
 
   if (target.isOwner && !actor.isOwner) throw forbidden("Only the workspace owner can change the owner's account.");
@@ -56,6 +57,8 @@ teamRouter.patch("/users/:id", requirePerm("members.manage"), async (req, res) =
     data: { ...rest, ...(roleIds ? { roles: { set: roleIds.map((id) => ({ id })) } } : {}) },
     select: memberDetailSelect,
   });
+  // A disabled account must stop receiving live updates right away, not at its next reconnect.
+  if (body.status === "DISABLED") disconnectUser(target.id);
   emitAll("users:changed", { id: target.id });
   res.json(updated);
 });
@@ -131,7 +134,7 @@ teamRouter.post("/users/:id/password", requirePerm("members.manage"), async (req
     where: { id: param(req, "id") },
     include: { roles: { select: { permissions: true } } },
   });
-  if (!target) throw notFound("Member not found.");
+  if (!target || target.isSystem) throw notFound("Member not found.");
   if (target.id === actor.id) throw badRequest("Change your own password from your profile.");
   if (target.isOwner && !actor.isOwner) throw forbidden("Only the workspace owner can reset the owner's password.");
   if (target.roles.some((r) => r.permissions.includes("admin")) && !actor.perms.has("admin")) {
@@ -147,6 +150,70 @@ teamRouter.post("/users/:id/password", requirePerm("members.manage"), async (req
       sessionsValidFrom: new Date(),
     },
   });
+  res.json({ ok: true });
+});
+
+/**
+ * Permanently deletes an account. Everything the member wrote or created stays, credited to a
+ * "Deleted user" placeholder, so chat history, documents and productions don't disappear or break.
+ */
+teamRouter.delete("/users/:id", requirePerm("members.manage"), async (req, res) => {
+  const actor = req.user!;
+  const target = await prisma.user.findUnique({
+    where: { id: param(req, "id") },
+    include: { roles: { select: { permissions: true } } },
+  });
+  if (!target || target.isSystem) throw notFound("Member not found.");
+  if (target.id === actor.id) throw badRequest("You can't delete your own account.");
+  if (target.isOwner) throw forbidden("The workspace owner's account can't be deleted.");
+  if (target.roles.some((r) => r.permissions.includes("admin")) && !actor.perms.has("admin")) {
+    throw forbidden("Only administrators can delete an administrator's account.");
+  }
+
+  // Hashing is slow, so do it before opening the transaction.
+  const placeholderHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
+
+  await prisma.$transaction(async (tx) => {
+    const ghost =
+      (await tx.user.findFirst({ where: { isSystem: true } })) ??
+      (await tx.user.create({
+        data: {
+          username: `deleted.${crypto.randomBytes(4).toString("hex")}`,
+          displayName: "Deleted user",
+          passwordHash: placeholderHash,
+          avatarColor: "#80848e",
+          status: "DISABLED",
+          isSystem: true,
+        },
+      }));
+
+    // Hand everything they authored to the placeholder.
+    await tx.message.updateMany({ where: { authorId: target.id }, data: { authorId: ghost.id } });
+    await tx.attachment.updateMany({ where: { uploaderId: target.id }, data: { uploaderId: ghost.id } });
+    await tx.production.updateMany({ where: { createdById: target.id }, data: { createdById: ghost.id } });
+    await tx.task.updateMany({ where: { createdById: target.id }, data: { createdById: ghost.id } });
+    await tx.event.updateMany({ where: { createdById: target.id }, data: { createdById: ghost.id } });
+    await tx.announcement.updateMany({ where: { authorId: target.id }, data: { authorId: ghost.id } });
+    await tx.document.updateMany({ where: { createdById: target.id }, data: { createdById: ghost.id } });
+    await tx.document.updateMany({ where: { updatedById: target.id }, data: { updatedById: ghost.id } });
+    await tx.documentVersion.updateMany({ where: { createdById: target.id }, data: { createdById: ghost.id } });
+
+    // Keep their direct messages readable for the other person.
+    const dms = await tx.channel.findMany({ where: { type: "DM", members: { some: { userId: target.id } } }, select: { id: true } });
+    if (dms.length) {
+      await tx.channelMember.createMany({ data: dms.map((d) => ({ channelId: d.id, userId: ghost.id })), skipDuplicates: true });
+    }
+
+    // Memberships, reactions, RSVPs, read receipts and invites they created are removed with the account;
+    // tasks assigned to them become unassigned.
+    await tx.user.delete({ where: { id: target.id } });
+  });
+
+  disconnectUser(target.id);
+  emitAll("users:changed", { id: target.id });
+  emitAll("channels:changed", {});
+  emitAll("tasks:changed", {});
+  emitAll("productions:changed", {});
   res.json({ ok: true });
 });
 

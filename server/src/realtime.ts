@@ -71,6 +71,11 @@ export function emitToUsers(userIds: string[], event: string, payload: unknown) 
   for (const id of userIds) io?.to(`user:${id}`).emit(event, payload);
 }
 
+/** Closes every open connection a member has, e.g. when their account is disabled or deleted. */
+export function disconnectUser(userId: string) {
+  io?.in(`user:${userId}`).disconnectSockets(true);
+}
+
 export function emitAll(event: string, payload: unknown) {
   io?.emit(event, payload);
 }

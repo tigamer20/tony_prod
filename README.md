@@ -10,10 +10,13 @@ calendar, productions, tasks, announcements, and documents with import and expor
   New members get a temporary password and must choose their own on first sign-in. Admins can reset a forgotten
   password, which also signs that member out everywhere. Managers see each member's last login, and accounts that
   haven't signed in yet are marked "Pending". Custom roles with fine-grained permissions, disabled
-  accounts, and profile photos (cropped and shrunk in the browser, stored in the database).
+  accounts, and profile photos (cropped and shrunk in the browser, stored in the database). Admins can delete an
+  account for good: the member's messages, documents and other work stay, credited to "Deleted user". The owner
+  and your own account can't be deleted, and only administrators can delete administrators.
 - **Chat** – channels grouped by category, private channels limited to chosen roles, direct messages, replies,
   reactions, edits, pins, file/image attachments up to 10 MB (drag & drop or paste), typing indicators, unread badges,
-  online presence, message search. Messages arrive live over WebSockets.
+  online presence, message search. Messages arrive live over WebSockets. Individual messages, whole channels (managers)
+  and direct messages (either person) can be deleted; on a phone, tap a message to reveal its actions.
 - **Calendar** – month and agenda views, event types (shoot, meeting, scout, review, deadline, delivery), attendees
   with accept/decline, per-production filter, `.ics` export for Google/Apple/Outlook.
 - **Productions** – one per video: status pipeline, shoot date, shoot end date, target release date, location, team,

@@ -35,6 +35,9 @@ model User {
   sessionsValidFrom  DateTime?
   status       UserStatus @default(ACTIVE)
   isOwner      Boolean    @default(false)
+  /// The "Deleted user" placeholder that a removed member's messages and work are credited to.
+  /// Not a real person: it is disabled, has no usable password, and is never listed.
+  isSystem     Boolean    @default(false)
   createdAt    DateTime   @default(now())
   lastSeenAt   DateTime?
   /// Most recent sign-in. Empty means the member has never signed in ("Pending").

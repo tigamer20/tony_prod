@@ -150,7 +150,7 @@ function ChatView({ channel, onEdit }: { channel: Channel; onEdit: () => void })
   const { me, can } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
-  const { socket, setActiveChannel, markChannelRead, users } = useData();
+  const { socket, setActiveChannel, markChannelRead, refreshChannels, users } = useData();
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -375,6 +375,17 @@ function ChatView({ channel, onEdit }: { channel: Channel; onEdit: () => void })
     [act],
   );
 
+  async function deleteConversation() {
+    if (!window.confirm(`Delete your conversation with ${title}? Every message and file in it is deleted for both of you. This can't be undone.`)) return;
+    try {
+      await api.del(`/channels/${channel.id}`);
+      await refreshChannels();
+      navigate("/chat", { replace: true });
+    } catch (e) {
+      toast(errMsg(e), "error");
+    }
+  }
+
   async function openPins() {
     if (panel === "pins") return setPanel(null);
     setPins(await api.get<Message[]>(`/channels/${channel.id}/pins`));
@@ -415,6 +426,11 @@ function ChatView({ channel, onEdit }: { channel: Channel; onEdit: () => void })
         {channel.type === "TEXT" && can("channels.manage") && (
           <button className="icon-btn" title="Channel settings" aria-label="Channel settings" onClick={onEdit}>
             <Settings size={17} />
+          </button>
+        )}
+        {channel.type === "DM" && (
+          <button className="icon-btn" title="Delete conversation" aria-label="Delete conversation" onClick={() => void deleteConversation()}>
+            <Trash2 size={17} />
           </button>
         )}
       </div>
@@ -568,11 +584,19 @@ interface RowProps {
 
 const MessageRow = memo(function MessageRow({ m, compact, meId, myUsername, usernames, canModerate, canReact, onReact, onReply, onEdit, onPin, onDelete }: RowProps) {
   const [picker, setPicker] = useState(false);
+  // On touch screens there is no hover, so tapping a message reveals its actions.
+  const [selected, setSelected] = useState(false);
   const mine = m.author.id === meId;
   const mentioned = !m.deleted && new RegExp(`@${myUsername}\\b`, "i").test(m.content);
 
   return (
-    <div className={`msg ${compact ? "" : "first"} ${m.pinned ? "pinned" : ""} ${mentioned ? "mentioned" : ""}`}>
+    <div
+      className={`msg ${compact ? "" : "first"} ${m.pinned ? "pinned" : ""} ${mentioned ? "mentioned" : ""} ${selected ? "selected" : ""}`}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("a,button,video,img,textarea")) return;
+        setSelected((s) => !s);
+      }}
+    >
       {compact ? (
         <span className="msg-gutter">{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
       ) : (

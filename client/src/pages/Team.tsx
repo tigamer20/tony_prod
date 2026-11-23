@@ -350,10 +350,26 @@ function ManageMember({
   const [disabled, setDisabled] = useState(member.status === "DISABLED");
   const [busy, setBusy] = useState(false);
   const [resetPw, setResetPw] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isAdmin = can("admin");
   const targetIsAdmin = member.roles.some((m) => roles.find((r) => r.id === m.id)?.permissions.includes("admin"));
   // The server enforces the same rules; this just hides the button when it would be refused.
   const canReset = member.id !== me!.id && !(member.isOwner && !me!.isOwner) && !(targetIsAdmin && !isAdmin);
+
+  // Mirrors the server: never yourself or the owner, and only administrators can remove administrators.
+  const canDelete = member.id !== me!.id && !member.isOwner && !(targetIsAdmin && !isAdmin);
+
+  async function deleteAccount() {
+    setBusy(true);
+    try {
+      await api.del(`/users/${member.id}`);
+      toast(`${member.displayName}'s account was deleted.`, "success");
+      await onSaved();
+    } catch (e) {
+      toast(errMsg(e), "error");
+      setBusy(false);
+    }
+  }
 
   async function reset() {
     if (!resetPw) return;
@@ -435,6 +451,27 @@ function ManageMember({
           <input type="checkbox" checked={disabled} onChange={(e) => setDisabled(e.target.checked)} />
           Disable account (they can no longer sign in)
         </label>
+      )}
+      {canDelete && (
+        <div className="card" style={{ marginTop: 14, padding: 12, borderColor: "#ed424566" }}>
+          <b>Delete account</b>
+          <p className="muted small" style={{ margin: "4px 0 10px" }}>
+            Permanently removes {member.displayName}'s account. Their messages, documents and other work stay, credited to
+            "Deleted user". To keep the account but stop them signing in, disable it instead. This can't be undone.
+          </p>
+          {confirmingDelete ? (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Button small variant="danger" type="button" onClick={deleteAccount} disabled={busy}>
+                Yes, delete {member.displayName}
+              </Button>
+              <Button small variant="ghost" type="button" onClick={() => setConfirmingDelete(false)}>Cancel</Button>
+            </div>
+          ) : (
+            <Button small variant="danger" type="button" onClick={() => setConfirmingDelete(true)}>
+              <Trash2 size={14} /> Delete account...
+            </Button>
+          )}
+        </div>
       )}
     </Modal>
   );

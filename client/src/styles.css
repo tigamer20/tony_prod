@@ -207,6 +207,10 @@ a.list-item:hover { background: #ffffff06; text-decoration: none; }
 .reply-ref .ellipsis { max-width: 420px; }
 .msg-actions { position: absolute; top: -14px; right: 16px; display: none; background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px; padding: 2px; box-shadow: 0 4px 12px #0005; z-index: 5; }
 .msg:hover .msg-actions, .msg:focus-within .msg-actions { display: flex; }
+@media (hover: none) {
+  .msg.selected { background: #2e3035; }
+  .msg.selected .msg-actions { display: flex; }
+}
 .reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .reaction { display: inline-flex; gap: 5px; align-items: center; padding: 1px 8px; border-radius: 8px; background: var(--bg-2); border: 1px solid transparent; font-size: 13px; }
 .reaction:hover { border-color: var(--text-3); }

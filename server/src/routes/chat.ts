@@ -138,11 +138,27 @@ chatRouter.patch("/channels/:id", requirePerm("channels.manage"), async (req, re
   res.json(updated);
 });
 
-chatRouter.delete("/channels/:id", requirePerm("channels.manage"), async (req, res) => {
-  const channel = await prisma.channel.findUnique({ where: { id: param(req, "id") } });
-  if (!channel || channel.type !== "TEXT") throw notFound("Channel not found.");
+/**
+ * Deletes a conversation and every message and file in it. Channels need the "manage channels"
+ * permission; a direct message can be deleted by either of the two people in it.
+ */
+chatRouter.delete("/channels/:id", async (req, res) => {
+  const user = req.user!;
+  const channel = await prisma.channel.findUnique({
+    where: { id: param(req, "id") },
+    include: { members: { select: { userId: true } } },
+  });
+  if (!channel) throw notFound("Conversation not found.");
+
+  if (channel.type === "DM") {
+    if (!channel.members.some((m) => m.userId === user.id)) throw notFound("Conversation not found.");
+  } else if (!can(user, "channels.manage")) {
+    throw forbidden();
+  }
+
   await prisma.channel.delete({ where: { id: channel.id } });
-  emitAll("channels:changed", {});
+  if (channel.type === "DM") emitToUsers(channel.members.map((m) => m.userId), "channels:changed", {});
+  else emitAll("channels:changed", {});
   res.json({ ok: true });
 });
 
@@ -226,6 +242,10 @@ chatRouter.post("/channels/:id/messages", requirePerm("messages.send"), async (r
   const user = req.user!;
   const channel = await canAccessChannel(user, param(req, "id"));
   if (!channel) throw notFound("Channel not found.");
+  if (channel.type === "DM") {
+    const deletedPerson = await prisma.channelMember.findFirst({ where: { channelId: channel.id, user: { isSystem: true } } });
+    if (deletedPerson) throw badRequest("This person's account was deleted, so you can't send them messages anymore.");
+  }
   const body = parse(sendSchema, req.body);
   const content = body.content.trim();
   if (!content && body.attachmentIds.length === 0) throw badRequest("Write a message or attach a file.");
