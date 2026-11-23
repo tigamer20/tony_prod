@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { format } from "date-fns";
+import { format, isSameDay } from "date-fns";
 import { ArrowLeft, Clapperboard, FileText, MessageSquare, Plus, Trash2, UserPlus } from "lucide-react";
 import { api, errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useData, useSocketEvent } from "../data";
-import { DOC_TYPES, EVENT_TYPES, PRODUCTION_KINDS, STATUS_LABEL, fromDateInput, money, toDateInput } from "../lib";
+import { DOC_TYPES, EVENT_TYPES, STATUS_LABEL, fromDateInput, money, toDateInput } from "../lib";
 import type { CalEvent, DocListItem, Production, ProductionStatus } from "../types";
 import { Avatar, Badge, Button, Empty, Field, MemberPicker, Modal, PageHeader, Spinner, useToast } from "../ui";
 import { TaskBoard } from "./Tasks";
@@ -33,7 +33,7 @@ export function ProductionsPage() {
     <>
       <PageHeader
         title="Productions"
-        subtitle="Every project, from first idea to final delivery."
+        subtitle="Every video, from first idea to release day."
         actions={
           can("productions.create") && (
             <Button variant="primary" onClick={() => setCreating(true)}>
@@ -61,8 +61,17 @@ export function ProductionsPage() {
                 <h3 style={{ margin: 0 }}>{p.title}</h3>
                 <Badge color={STATUS_COLOR[p.status]}>{STATUS_LABEL[p.status]}</Badge>
               </div>
-              <div className="muted small" style={{ marginBottom: 10 }}>{[p.client, p.kind].filter(Boolean).join(" · ")}</div>
-              {p.deliveryDate && <div className="small">Delivery: <b>{format(new Date(p.deliveryDate), "MMM d, yyyy")}</b></div>}
+              <div style={{ margin: "8px 0 10px", display: "grid", gap: 2 }} className="small">
+                <div>
+                  <span className="muted">Shoot: </span>
+                  <b>{p.shootDate ? format(new Date(p.shootDate), "MMM d") : "not set"}</b>
+                  {p.shootEndDate && p.shootDate && !isSameDay(new Date(p.shootDate), new Date(p.shootEndDate)) && <b> to {format(new Date(p.shootEndDate), "MMM d")}</b>}
+                </div>
+                <div>
+                  <span className="muted">Release: </span>
+                  <b>{p.releaseDate ? format(new Date(p.releaseDate), "MMM d, yyyy") : "not set"}</b>
+                </div>
+              </div>
               <div className="chips" style={{ margin: "10px 0" }}>
                 {p.members.slice(0, 6).map((m) => <Avatar key={m.userId} user={m.user} size={26} />)}
                 {p.members.length > 6 && <span className="muted small">+{p.members.length - 6}</span>}
@@ -138,7 +147,7 @@ export function ProductionDetail() {
       </Link>
       <PageHeader
         title={p.title}
-        subtitle={[p.client, p.kind].filter(Boolean).join(" · ")}
+        subtitle={p.releaseDate ? `Target release: ${format(new Date(p.releaseDate), "EEEE, MMMM d, yyyy")}` : undefined}
         actions={
           <>
             <Badge color={STATUS_COLOR[p.status]}>{STATUS_LABEL[p.status]}</Badge>
@@ -166,9 +175,9 @@ export function ProductionDetail() {
             {p.description && <p style={{ whiteSpace: "pre-wrap", marginBottom: 14 }}>{p.description}</p>}
             <dl className="kv">
               <dt>Location</dt><dd>{p.location ?? "-"}</dd>
-              <dt>Start</dt><dd>{p.startDate ? format(new Date(p.startDate), "MMM d, yyyy") : "-"}</dd>
-              <dt>Wrap</dt><dd>{p.endDate ? format(new Date(p.endDate), "MMM d, yyyy") : "-"}</dd>
-              <dt>Delivery</dt><dd>{p.deliveryDate ? format(new Date(p.deliveryDate), "MMM d, yyyy") : "-"}</dd>
+              <dt>Shoot date</dt><dd>{p.shootDate ? format(new Date(p.shootDate), "EEE, MMM d, yyyy") : "-"}</dd>
+              <dt>Shoot end date</dt><dd>{p.shootEndDate ? format(new Date(p.shootEndDate), "EEE, MMM d, yyyy") : "-"}</dd>
+              <dt>Target release</dt><dd>{p.releaseDate ? format(new Date(p.releaseDate), "EEE, MMM d, yyyy") : "-"}</dd>
               {p.budget !== null && (<><dt>Budget</dt><dd>{money(p.budget)}</dd></>)}
             </dl>
           </section>
@@ -266,16 +275,14 @@ function ProductionModal({ production, onClose, onSaved }: { production?: Produc
   const navigate = useNavigate();
   const [form, setForm] = useState({
     title: production?.title ?? "",
-    client: production?.client ?? "",
-    kind: production?.kind ?? "Commercial",
     status: (production?.status ?? "DEVELOPMENT") as ProductionStatus,
     description: production?.description ?? "",
     location: production?.location ?? "",
     budget: production?.budget?.toString() ?? "",
     color: production?.color ?? "#5865f2",
-    startDate: toDateInput(production?.startDate),
-    endDate: toDateInput(production?.endDate),
-    deliveryDate: toDateInput(production?.deliveryDate),
+    shootDate: toDateInput(production?.shootDate),
+    shootEndDate: toDateInput(production?.shootEndDate),
+    releaseDate: toDateInput(production?.releaseDate),
     memberIds: [] as string[],
   });
   const [busy, setBusy] = useState(false);
@@ -287,16 +294,14 @@ function ProductionModal({ production, onClose, onSaved }: { production?: Produc
     try {
       const body = {
         title: form.title,
-        client: form.client || null,
-        kind: form.kind,
         status: form.status,
         description: form.description || null,
         location: form.location || null,
         ...(showBudget ? { budget: form.budget ? Number(form.budget) : null } : {}),
         color: form.color,
-        startDate: fromDateInput(form.startDate),
-        endDate: fromDateInput(form.endDate),
-        deliveryDate: fromDateInput(form.deliveryDate),
+        shootDate: fromDateInput(form.shootDate),
+        shootEndDate: fromDateInput(form.shootEndDate),
+        releaseDate: fromDateInput(form.releaseDate),
       };
       if (production) {
         await api.patch(`/productions/${production.id}`, body);
@@ -328,12 +333,6 @@ function ProductionModal({ production, onClose, onSaved }: { production?: Produc
     >
       <Field label="Title"><input type="text" value={form.title} onChange={set("title")} autoFocus maxLength={120} /></Field>
       <div className="row">
-        <Field label="Client"><input type="text" value={form.client} onChange={set("client")} /></Field>
-        <Field label="Type">
-          <select value={form.kind} onChange={set("kind")}>{PRODUCTION_KINDS.map((k) => <option key={k}>{k}</option>)}</select>
-        </Field>
-      </div>
-      <div className="row">
         <Field label="Status">
           <select value={form.status} onChange={set("status")}>
             {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -347,9 +346,9 @@ function ProductionModal({ production, onClose, onSaved }: { production?: Produc
         {showBudget && <Field label="Budget (CAD)"><input type="number" min={0} value={form.budget} onChange={set("budget")} /></Field>}
       </div>
       <div className="row">
-        <Field label="Start"><input type="date" value={form.startDate} onChange={set("startDate")} /></Field>
-        <Field label="Wrap"><input type="date" value={form.endDate} onChange={set("endDate")} /></Field>
-        <Field label="Delivery"><input type="date" value={form.deliveryDate} onChange={set("deliveryDate")} /></Field>
+        <Field label="Shoot date"><input type="date" value={form.shootDate} onChange={set("shootDate")} /></Field>
+        <Field label="Shoot end date"><input type="date" value={form.shootEndDate} min={form.shootDate || undefined} onChange={set("shootEndDate")} /></Field>
+        <Field label="Target release date"><input type="date" value={form.releaseDate} onChange={set("releaseDate")} /></Field>
       </div>
       {!production && (
         <Field label="Team" hint="You're added automatically. A chat channel is created for the production.">

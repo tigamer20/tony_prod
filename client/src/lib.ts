@@ -72,8 +72,6 @@ export const PRIORITY_COLOR: Record<string, string> = {
   URGENT: "#ed4245",
 };
 
-export const PRODUCTION_KINDS = ["Commercial", "Music video", "Corporate", "Documentary", "Short film", "Social content", "Event", "Other"];
-
 /** Readable random password without look-alike characters (no 0/O, 1/l/I). */
 export function generatePassword(length = 12): string {
   const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";

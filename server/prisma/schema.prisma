@@ -182,16 +182,17 @@ enum ProductionStatus {
 model Production {
   id           String           @id @default(cuid())
   title        String
-  client       String?
-  kind         String           @default("Other")
   status       ProductionStatus @default(DEVELOPMENT)
   description  String?
   location     String?
   budget       Int?
   color        String           @default("#5865f2")
-  startDate    DateTime?
-  endDate      DateTime?
-  deliveryDate DateTime?
+  /// First day of filming.
+  shootDate    DateTime?
+  /// Last day of filming.
+  shootEndDate DateTime?
+  /// The date the video should come out.
+  releaseDate  DateTime?
   createdById  String
   createdBy    User             @relation("ProductionCreator", fields: [createdById], references: [id])
   createdAt    DateTime         @default(now())

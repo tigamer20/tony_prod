@@ -17,7 +17,7 @@ const people = [
   { username: "maya", displayName: "Maya Chen", role: "Producer", jobTitle: "Line Producer", color: "#f0b232" },
   { username: "leo", displayName: "Leo Martin", role: "Department Head", jobTitle: "Director of Photography", color: "#3ba55d" },
   { username: "sam", displayName: "Sam Okafor", role: "Crew", jobTitle: "Gaffer", color: "#5865f2" },
-  { username: "nina", displayName: "Nina Rossi", role: "Client / Guest", jobTitle: "Client - Northwind", color: "#99aab5" },
+  { username: "nina", displayName: "Nina Rossi", role: "Client / Guest", jobTitle: "Guest", color: "#99aab5" },
 ];
 
 const users: Record<string, string> = {};
@@ -51,20 +51,18 @@ if ((await prisma.production.count()) === 0) {
 
   const production = await prisma.production.create({
     data: {
-      title: "Northwind Brand Film",
-      client: "Northwind Outdoors",
-      kind: "Commercial",
+      title: "Winter Camping Challenge",
       status: "PRE_PRODUCTION",
-      description: "90-second hero film plus six social cut-downs shot over two days in the Laurentians.",
+      description: "A 15-minute video: 48 hours camping in the Laurentians in the snow, plus a short teaser for Shorts.",
       location: "Mont-Tremblant, QC",
-      budget: 85000,
+      budget: 1200,
       color: "#eb459e",
-      startDate: at(3, 8),
-      endDate: at(5, 18),
-      deliveryDate: new Date(+at(0, 9) + 28 * day),
+      shootDate: at(3, 8),
+      shootEndDate: at(5, 18),
+      releaseDate: new Date(+at(0, 9) + 28 * day),
       createdById: creator,
       members: { create: Object.values(users).map((userId) => ({ userId })) },
-      channels: { create: { name: "northwind-brand-film", category: "Productions", topic: "Chat for Northwind Brand Film" } },
+      channels: { create: { name: "winter-camping-challenge", category: "Productions", topic: "Chat for Winter Camping Challenge" } },
     },
   });
 
@@ -73,7 +71,7 @@ if ((await prisma.production.count()) === 0) {
       { title: "Lock shot list with director", status: "IN_PROGRESS", priority: "HIGH", dueDate: at(1, 17), assigneeId: users.leo!, productionId: production.id, createdById: creator },
       { title: "Book camera & lighting package", status: "TODO", priority: "URGENT", dueDate: at(2, 12), assigneeId: users.maya!, productionId: production.id, createdById: creator },
       { title: "Scout location B", status: "REVIEW", priority: "MEDIUM", assigneeId: users.sam!, productionId: production.id, createdById: creator },
-      { title: "Client sign-off on treatment", status: "DONE", priority: "MEDIUM", productionId: production.id, createdById: creator },
+      { title: "Write the video outline", status: "DONE", priority: "MEDIUM", productionId: production.id, createdById: creator },
     ],
   });
 
@@ -83,14 +81,14 @@ if ((await prisma.production.count()) === 0) {
       { title: "Shoot day 1", type: "SHOOT", start: at(3, 7), end: at(3, 19), location: "Mont-Tremblant, QC", productionId: production.id, createdById: creator },
       { title: "Shoot day 2", type: "SHOOT", start: at(4, 7), end: at(4, 19), location: "Mont-Tremblant, QC", productionId: production.id, createdById: creator },
       { title: "Rough cut review", type: "REVIEW", start: at(12, 14), end: at(12, 15), productionId: production.id, createdById: creator },
-      { title: "Final delivery", type: "DELIVERY", start: at(28, 9), end: at(28, 10), allDay: true, productionId: production.id, createdById: creator },
+      { title: "Video release", type: "DELIVERY", start: at(28, 9), end: at(28, 10), allDay: true, productionId: production.id, createdById: creator },
     ],
   });
 
   await prisma.announcement.create({
     data: {
-      title: "Welcome to the Northwind shoot",
-      body: "Call times will be posted 48 hours before each shoot day. Please confirm your availability on the calendar and read the treatment before the pre-production meeting.",
+      title: "Winter camping shoot plan",
+      body: "Call times will be posted 48 hours before each shoot day. Please confirm your availability on the calendar and read the outline before the pre-production meeting.",
       priority: "IMPORTANT",
       pinned: true,
       productionId: production.id,

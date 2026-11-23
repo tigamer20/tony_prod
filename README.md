@@ -15,7 +15,8 @@ calendar, productions, tasks, announcements, and documents with import and expor
   online presence, message search. Messages arrive live over WebSockets.
 - **Calendar** – month and agenda views, event types (shoot, meeting, scout, review, deadline, delivery), attendees
   with accept/decline, per-production filter, `.ics` export for Google/Apple/Outlook.
-- **Productions** – status pipeline, client, dates, location, team, budget (hidden from people without access), and an
+- **Productions** – one per video: status pipeline, shoot date, shoot end date, target release date, location, team,
+  budget (hidden from people without access), and an
   auto-created chat channel per production.
 - **Tasks** – drag-and-drop board (To do / In progress / In review / Done) with priorities, due dates and assignees.
 - **Announcements** – priorities, pinning, read receipts, live toast notifications.

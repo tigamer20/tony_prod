@@ -96,16 +96,17 @@ export type ProductionStatus = "DEVELOPMENT" | "PRE_PRODUCTION" | "PRODUCTION" |
 export interface Production {
   id: string;
   title: string;
-  client: string | null;
-  kind: string;
   status: ProductionStatus;
   description: string | null;
   location: string | null;
   budget: number | null;
   color: string;
-  startDate: string | null;
-  endDate: string | null;
-  deliveryDate: string | null;
+  /** First day of filming. */
+  shootDate: string | null;
+  /** Last day of filming. */
+  shootEndDate: string | null;
+  /** The date the video should come out. */
+  releaseDate: string | null;
   createdById: string;
   members: { userId: string; jobTitle: string | null; user: MiniUser }[];
   channels: { id: string; name: string }[];

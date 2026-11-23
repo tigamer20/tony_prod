@@ -15,20 +15,25 @@ const optDate = z.coerce.date().nullable().optional();
 
 const PRODUCTION_STATUS = ["DEVELOPMENT", "PRE_PRODUCTION", "PRODUCTION", "POST_PRODUCTION", "DELIVERED", "ARCHIVED"] as const;
 
-const productionSchema = z.object({
+const productionFields = z.object({
   title: z.string().trim().min(1, "Title is required.").max(120),
-  client: z.string().trim().max(120).nullable().optional(),
-  kind: z.string().trim().max(40).default("Other"),
   status: z.enum(PRODUCTION_STATUS).default("DEVELOPMENT"),
   description: z.string().trim().max(4000).nullable().optional(),
   location: z.string().trim().max(200).nullable().optional(),
   budget: z.number().int().min(0).nullable().optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#5865f2"),
-  startDate: optDate,
-  endDate: optDate,
-  deliveryDate: optDate,
+  shootDate: optDate,
+  shootEndDate: optDate,
+  releaseDate: optDate,
   memberIds: z.array(z.string()).default([]),
 });
+
+const shootEndsAfterStart = (p: { shootDate?: Date | null; shootEndDate?: Date | null }) =>
+  !p.shootDate || !p.shootEndDate || p.shootEndDate >= p.shootDate;
+const shootOrderIssue = { message: "The shoot can't end before it starts.", path: ["shootEndDate"] };
+
+const productionSchema = productionFields.refine(shootEndsAfterStart, shootOrderIssue);
+const productionPatchSchema = productionFields.partial().refine(shootEndsAfterStart, shootOrderIssue);
 
 const productionInclude = {
   members: { include: { user: { select: miniUserSelect } } },
@@ -85,7 +90,7 @@ workRouter.post("/productions", requirePerm("productions.create"), async (req, r
 
 workRouter.patch("/productions/:id", async (req, res) => {
   const existing = await assertCanEditProduction(req.user!, param(req, "id"));
-  const { memberIds: _ignored, ...body } = parse(productionSchema.partial(), req.body);
+  const { memberIds: _ignored, ...body } = parse(productionPatchSchema, req.body);
   const updated = await prisma.production.update({
     where: { id: existing.id },
     data: body,
