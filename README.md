@@ -8,7 +8,8 @@ calendar, productions, tasks, announcements, and documents with import and expor
 - **Accounts & access** – the first account becomes the workspace owner. After that, admins (anyone allowed to manage
   members) create accounts right in the app with just a username (email is optional), or share an invite link.
   New members get a temporary password and must choose their own on first sign-in. Admins can reset a forgotten
-  password, which also signs that member out everywhere. Custom roles with fine-grained permissions, disabled
+  password, which also signs that member out everywhere. Managers see each member's last login, and accounts that
+  haven't signed in yet are marked "Pending". Custom roles with fine-grained permissions, disabled
   accounts, and profile photos (cropped and shrunk in the browser, stored in the database).
 - **Chat** – channels grouped by category, private channels limited to chosen roles, direct messages, replies,
   reactions, edits, pins, file/image attachments up to 10 MB (drag & drop or paste), typing indicators, unread badges,

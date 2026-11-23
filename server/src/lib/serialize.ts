@@ -31,4 +31,5 @@ export const memberDetailSelect = {
   mustChangePassword: true,
   createdAt: true,
   lastSeenAt: true,
+  lastLoginAt: true,
 } satisfies Prisma.UserSelect;

@@ -25,6 +25,8 @@ export interface Member extends MiniUser {
   isOwner?: boolean;
   createdAt?: string;
   lastSeenAt?: string | null;
+  /** Most recent sign-in; null means the member has never signed in ("Pending"). Managers only. */
+  lastLoginAt?: string | null;
 }
 
 export interface Role {

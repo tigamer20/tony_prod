@@ -37,6 +37,8 @@ model User {
   isOwner      Boolean    @default(false)
   createdAt    DateTime   @default(now())
   lastSeenAt   DateTime?
+  /// Most recent sign-in. Empty means the member has never signed in ("Pending").
+  lastLoginAt  DateTime?
 
   roles               Role[]               @relation("UserRoles")
   messages            Message[]

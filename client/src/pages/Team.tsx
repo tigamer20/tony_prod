@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { Copy, KeyRound, MessageSquare, Plus, RefreshCw, Shield, Trash2, UserPlus } from "lucide-react";
 import { api, errMsg } from "../api";
 import { useAuth } from "../auth";
@@ -40,6 +40,11 @@ function Members() {
   const [credentials, setCredentials] = useState<Credentials | null>(null);
   const manager = can("members.manage");
 
+  // Sign-in times change often, so load fresh ones whenever this screen opens.
+  useEffect(() => {
+    if (manager) void refreshUsers();
+  }, [manager, refreshUsers]);
+
   const list = users.filter((u) => (u.displayName + u.username + (u.jobTitle ?? "")).toLowerCase().includes(q.toLowerCase()));
 
   async function dm(u: Member) {
@@ -65,7 +70,7 @@ function Members() {
       <div className="card scroll-x" style={{ padding: 0 }}>
         <table className="table">
           <thead>
-            <tr><th>Member</th><th>Roles</th>{manager && <th>Contact</th>}{manager && <th>Status</th>}<th /></tr>
+            <tr><th>Member</th><th>Roles</th>{manager && <th>Contact</th>}{manager && <th>Status</th>}{manager && <th>Last login</th>}<th /></tr>
           </thead>
           <tbody>
             {list.map((u) => (
@@ -81,7 +86,28 @@ function Members() {
                 </td>
                 <td><div className="chips">{u.roles.map((r) => <RoleChip key={r.id} role={r} />)}</div></td>
                 {manager && <td className="small">{u.email ?? <span className="muted">No email</span>}{u.phone && <div className="muted">{u.phone}</div>}</td>}
-                {manager && <td>{u.status === "DISABLED" ? <Badge color="#ed4245">Disabled</Badge> : <Badge color="#3ba55d">Active</Badge>}</td>}
+                {manager && (
+                  <td>
+                    {u.status === "DISABLED" ? (
+                      <Badge color="#ed4245">Disabled</Badge>
+                    ) : u.lastLoginAt ? (
+                      <Badge color="#3ba55d">Active</Badge>
+                    ) : (
+                      <span title="Hasn't signed in yet">
+                        <Badge color="#f0b232">Pending</Badge>
+                      </span>
+                    )}
+                  </td>
+                )}
+                {manager && (
+                  <td className="small" style={{ whiteSpace: "nowrap" }}>
+                    {u.lastLoginAt ? (
+                      <span title={format(new Date(u.lastLoginAt), "PPpp")}>{formatDistanceToNow(new Date(u.lastLoginAt), { addSuffix: true })}</span>
+                    ) : (
+                      <span className="muted">Never</span>
+                    )}
+                  </td>
+                )}
                 <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                   {u.id !== me!.id && u.status !== "DISABLED" && can("messages.send") && (
                     <Button small variant="ghost" onClick={() => dm(u)} aria-label={`Message ${u.displayName}`}><MessageSquare size={14} /> Message</Button>

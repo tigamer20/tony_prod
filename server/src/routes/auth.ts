@@ -107,6 +107,8 @@ authRouter.post("/register", limiter, async (req, res) => {
       displayName: body.displayName,
       passwordHash: await bcrypt.hash(body.password, 12),
       isOwner: isFirstUser,
+      // Signing up signs the person in, so they are not "pending".
+      lastLoginAt: new Date(),
       avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
       roles: { connect: roleIds.map((id) => ({ id })) },
     },
@@ -129,6 +131,10 @@ authRouter.post("/login", limiter, async (req, res) => {
   const ok = user ? await bcrypt.compare(body.password, user.passwordHash) : false;
   if (!user || !ok) throw new HttpError(401, "Incorrect email/username or password.");
   if (user.status !== "ACTIVE") throw new HttpError(403, "This account has been disabled. Contact an administrator.");
+
+  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+  // Lets an open Team screen flip "Pending" to the sign-in time right away.
+  emitAll("users:changed", { id: user.id });
 
   setSessionCookie(res, signToken(user.id));
   res.json(await mePayload(user.id));
