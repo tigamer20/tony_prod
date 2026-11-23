@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { format, isSameDay } from "date-fns";
 import { ArrowLeft, Clapperboard, FileText, MessageSquare, Plus, Trash2, UserPlus } from "lucide-react";
@@ -9,6 +9,15 @@ import { DOC_TYPES, EVENT_TYPES, STATUS_LABEL, fromDateInput, money, toDateInput
 import type { CalEvent, DocListItem, Production, ProductionStatus } from "../types";
 import { Avatar, Badge, Button, Empty, Field, MemberPicker, Modal, PageHeader, Spinner, useToast } from "../ui";
 import { TaskBoard } from "./Tasks";
+
+/** A date that hasn't been decided yet is stored as empty and shown as "TBD". */
+const dateOrTbd = (iso: string | null, fmt = "MMM d, yyyy") => (iso ? format(new Date(iso), fmt) : "TBD");
+
+function shootLabel(p: Production) {
+  if (!p.shootDate && !p.shootEndDate) return "TBD";
+  if (p.shootDate && p.shootEndDate && isSameDay(new Date(p.shootDate), new Date(p.shootEndDate))) return dateOrTbd(p.shootDate, "MMM d");
+  return `${dateOrTbd(p.shootDate, "MMM d")} to ${dateOrTbd(p.shootEndDate, "MMM d")}`;
+}
 
 const STATUS_COLOR: Record<ProductionStatus, string> = {
   DEVELOPMENT: "#99aab5",
@@ -64,12 +73,11 @@ export function ProductionsPage() {
               <div style={{ margin: "8px 0 10px", display: "grid", gap: 2 }} className="small">
                 <div>
                   <span className="muted">Shoot: </span>
-                  <b>{p.shootDate ? format(new Date(p.shootDate), "MMM d") : "not set"}</b>
-                  {p.shootEndDate && p.shootDate && !isSameDay(new Date(p.shootDate), new Date(p.shootEndDate)) && <b> to {format(new Date(p.shootEndDate), "MMM d")}</b>}
+                  <b>{shootLabel(p)}</b>
                 </div>
                 <div>
                   <span className="muted">Release: </span>
-                  <b>{p.releaseDate ? format(new Date(p.releaseDate), "MMM d, yyyy") : "not set"}</b>
+                  <b>{dateOrTbd(p.releaseDate)}</b>
                 </div>
               </div>
               <div className="chips" style={{ margin: "10px 0" }}>
@@ -147,7 +155,7 @@ export function ProductionDetail() {
       </Link>
       <PageHeader
         title={p.title}
-        subtitle={p.releaseDate ? `Target release: ${format(new Date(p.releaseDate), "EEEE, MMMM d, yyyy")}` : undefined}
+        subtitle={`Target release: ${dateOrTbd(p.releaseDate, "EEEE, MMMM d, yyyy")}`}
         actions={
           <>
             <Badge color={STATUS_COLOR[p.status]}>{STATUS_LABEL[p.status]}</Badge>
@@ -175,9 +183,9 @@ export function ProductionDetail() {
             {p.description && <p style={{ whiteSpace: "pre-wrap", marginBottom: 14 }}>{p.description}</p>}
             <dl className="kv">
               <dt>Location</dt><dd>{p.location ?? "-"}</dd>
-              <dt>Shoot date</dt><dd>{p.shootDate ? format(new Date(p.shootDate), "EEE, MMM d, yyyy") : "-"}</dd>
-              <dt>Shoot end date</dt><dd>{p.shootEndDate ? format(new Date(p.shootEndDate), "EEE, MMM d, yyyy") : "-"}</dd>
-              <dt>Target release</dt><dd>{p.releaseDate ? format(new Date(p.releaseDate), "EEE, MMM d, yyyy") : "-"}</dd>
+              <dt>Shoot date</dt><dd>{dateOrTbd(p.shootDate, "EEE, MMM d, yyyy")}</dd>
+              <dt>Shoot end date</dt><dd>{dateOrTbd(p.shootEndDate, "EEE, MMM d, yyyy")}</dd>
+              <dt>Target release</dt><dd>{dateOrTbd(p.releaseDate, "EEE, MMM d, yyyy")}</dd>
               {p.budget !== null && (<><dt>Budget</dt><dd>{money(p.budget)}</dd></>)}
             </dl>
           </section>
@@ -283,6 +291,10 @@ function ProductionModal({ production, onClose, onSaved }: { production?: Produc
     shootDate: toDateInput(production?.shootDate),
     shootEndDate: toDateInput(production?.shootEndDate),
     releaseDate: toDateInput(production?.releaseDate),
+    // Ticked = "TBD": the date isn't decided yet and is saved as empty.
+    shootDateTbd: !production?.shootDate,
+    shootEndDateTbd: !production?.shootEndDate,
+    releaseDateTbd: !production?.releaseDate,
     memberIds: [] as string[],
   });
   const [busy, setBusy] = useState(false);
@@ -299,9 +311,9 @@ function ProductionModal({ production, onClose, onSaved }: { production?: Produc
         location: form.location || null,
         ...(showBudget ? { budget: form.budget ? Number(form.budget) : null } : {}),
         color: form.color,
-        shootDate: fromDateInput(form.shootDate),
-        shootEndDate: fromDateInput(form.shootEndDate),
-        releaseDate: fromDateInput(form.releaseDate),
+        shootDate: form.shootDateTbd ? null : fromDateInput(form.shootDate),
+        shootEndDate: form.shootEndDateTbd ? null : fromDateInput(form.shootEndDate),
+        releaseDate: form.releaseDateTbd ? null : fromDateInput(form.releaseDate),
       };
       if (production) {
         await api.patch(`/productions/${production.id}`, body);
@@ -346,9 +358,25 @@ function ProductionModal({ production, onClose, onSaved }: { production?: Produc
         {showBudget && <Field label="Budget (CAD)"><input type="number" min={0} value={form.budget} onChange={set("budget")} /></Field>}
       </div>
       <div className="row">
-        <Field label="Shoot date"><input type="date" value={form.shootDate} onChange={set("shootDate")} /></Field>
-        <Field label="Shoot end date"><input type="date" value={form.shootEndDate} min={form.shootDate || undefined} onChange={set("shootEndDate")} /></Field>
-        <Field label="Target release date"><input type="date" value={form.releaseDate} onChange={set("releaseDate")} /></Field>
+        <DateField
+          label="Shoot date"
+          value={form.shootDate}
+          tbd={form.shootDateTbd}
+          onChange={(shootDate, shootDateTbd) => setForm((f) => ({ ...f, shootDate, shootDateTbd }))}
+        />
+        <DateField
+          label="Shoot end date"
+          value={form.shootEndDate}
+          tbd={form.shootEndDateTbd}
+          min={form.shootDateTbd ? undefined : form.shootDate || undefined}
+          onChange={(shootEndDate, shootEndDateTbd) => setForm((f) => ({ ...f, shootEndDate, shootEndDateTbd }))}
+        />
+        <DateField
+          label="Target release date"
+          value={form.releaseDate}
+          tbd={form.releaseDateTbd}
+          onChange={(releaseDate, releaseDateTbd) => setForm((f) => ({ ...f, releaseDate, releaseDateTbd }))}
+        />
       </div>
       {!production && (
         <Field label="Team" hint="You're added automatically. A chat channel is created for the production.">
@@ -356,5 +384,32 @@ function ProductionModal({ production, onClose, onSaved }: { production?: Produc
         </Field>
       )}
     </Modal>
+  );
+}
+
+/** A date input with a "TBD" checkbox for dates that aren't decided yet. */
+function DateField({
+  label,
+  value,
+  tbd,
+  min,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  tbd: boolean;
+  min?: string;
+  onChange: (value: string, tbd: boolean) => void;
+}) {
+  const id = useId();
+  return (
+    <div className="field">
+      <label className="field-label" htmlFor={id}>{label}</label>
+      <input id={id} type="date" value={tbd ? "" : value} min={min} disabled={tbd} onChange={(e) => onChange(e.target.value, false)} />
+      <label className="small" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <input type="checkbox" checked={tbd} onChange={(e) => onChange(e.target.checked ? "" : value, e.target.checked)} />
+        TBD (not decided yet)
+      </label>
+    </div>
   );
 }
