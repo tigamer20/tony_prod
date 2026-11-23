@@ -1,7 +1,9 @@
 import bcrypt from "bcryptjs";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
+import multer from "multer";
 import { z } from "zod";
+import { emitAll } from "../realtime.js";
 import {
   clearSessionCookie,
   loadAuthUser,
@@ -11,7 +13,7 @@ import {
 } from "../auth.js";
 import { prisma } from "../db.js";
 import { badRequest, HttpError, parse } from "../lib/http.js";
-import { memberDetailSelect } from "../lib/serialize.js";
+import { AVATAR_COLORS, memberDetailSelect } from "../lib/serialize.js";
 
 export const authRouter = Router();
 
@@ -22,8 +24,6 @@ const limiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many attempts. Please try again in a few minutes." },
 });
-
-const AVATAR_COLORS = ["#5865f2", "#eb459e", "#3ba55d", "#f0b232", "#ed4245", "#1abc9c", "#9b59b6", "#e67e22"];
 
 async function mePayload(userId: string) {
   const [user, auth] = await Promise.all([
@@ -38,7 +38,14 @@ authRouter.get("/setup", async (_req, res) => {
 });
 
 const registerSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email address.")),
+  // Optional: a username is enough to have an account.
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(z.email("Enter a valid email address."))
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
   username: z
     .string()
     .trim()
@@ -66,11 +73,12 @@ authRouter.post("/register", limiter, async (req, res) => {
   }
 
   const clash = await prisma.user.findFirst({
-    where: { OR: [{ email: body.email }, { username: body.username }] },
+    // Only compare emails when one was given: an undefined filter inside OR would match every row.
+    where: { OR: [...(body.email ? [{ email: body.email }] : []), { username: body.username }] },
     select: { email: true },
   });
   if (clash) {
-    throw new HttpError(409, clash.email === body.email ? "That email is already registered." : "That username is taken.");
+    throw new HttpError(409, body.email && clash.email === body.email ? "That email is already registered." : "That username is taken.");
   }
 
   if (invite) {
@@ -94,7 +102,7 @@ authRouter.post("/register", limiter, async (req, res) => {
 
   const user = await prisma.user.create({
     data: {
-      email: body.email,
+      email: body.email ?? null,
       username: body.username,
       displayName: body.displayName,
       passwordHash: await bcrypt.hash(body.password, 12),
@@ -160,9 +168,47 @@ authRouter.post("/password", requireAuth, limiter, async (req, res) => {
   if (!(await bcrypt.compare(body.currentPassword, user.passwordHash))) {
     throw new HttpError(400, "Your current password is incorrect.");
   }
+  if (body.currentPassword === body.newPassword) throw new HttpError(400, "Your new password must be different from the current one.");
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash: await bcrypt.hash(body.newPassword, 12) },
+    data: {
+      passwordHash: await bcrypt.hash(body.newPassword, 12),
+      mustChangePassword: false,
+      // Sign out every other device, then keep this one signed in with a fresh token.
+      sessionsValidFrom: new Date(),
+    },
   });
-  res.json({ ok: true });
+  setSessionCookie(res, signToken(user.id));
+  res.json(await mePayload(user.id));
+});
+
+// ─── Profile photo ───────────────────────────────────────────────────────
+
+const avatarUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024, files: 1 } });
+
+/** Identify an image by its first bytes rather than trusting the browser-supplied type. */
+function sniffImage(b: Buffer): "image/png" | "image/jpeg" | "image/webp" | "image/gif" | null {
+  if (b.length > 12 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
+  if (b.length > 12 && b.subarray(0, 4).toString("ascii") === "RIFF" && b.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  if (b.length > 6 && ["GIF87a", "GIF89a"].includes(b.subarray(0, 6).toString("ascii"))) return "image/gif";
+  return null;
+}
+
+authRouter.post("/avatar", requireAuth, avatarUpload.single("avatar"), async (req, res) => {
+  if (!req.file) throw badRequest("Choose a photo to upload.");
+  const type = sniffImage(req.file.buffer);
+  if (!type) throw new HttpError(415, "Profile photos must be PNG, JPEG, WebP or GIF images.");
+  await prisma.user.update({
+    where: { id: req.user!.id },
+    data: { avatar: new Uint8Array(req.file.buffer), avatarType: type, avatarUpdatedAt: new Date() },
+  });
+  emitAll("users:changed", {});
+  res.json(await mePayload(req.user!.id));
+});
+
+authRouter.delete("/avatar", requireAuth, async (req, res) => {
+  await prisma.user.update({ where: { id: req.user!.id }, data: { avatar: null, avatarType: null, avatarUpdatedAt: null } });
+  emitAll("users:changed", {});
+  res.json(await mePayload(req.user!.id));
 });

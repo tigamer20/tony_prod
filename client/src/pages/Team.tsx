@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
-import { Copy, MessageSquare, Plus, Shield, Trash2 } from "lucide-react";
+import { Copy, KeyRound, MessageSquare, Plus, RefreshCw, Shield, Trash2, UserPlus } from "lucide-react";
 import { api, errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useData } from "../data";
+import { generatePassword, suggestUsername } from "../lib";
 import type { Invite, Member, PermissionInfo, Role } from "../types";
 import { Avatar, Badge, Button, Empty, Field, Modal, PageHeader, RoleChip, Spinner, useToast } from "../ui";
 
@@ -35,6 +36,8 @@ function Members() {
   const toast = useToast();
   const [q, setQ] = useState("");
   const [managing, setManaging] = useState<Member | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [credentials, setCredentials] = useState<Credentials | null>(null);
   const manager = can("members.manage");
 
   const list = users.filter((u) => (u.displayName + u.username + (u.jobTitle ?? "")).toLowerCase().includes(q.toLowerCase()));
@@ -51,7 +54,14 @@ function Members() {
 
   return (
     <>
-      <input type="search" style={{ maxWidth: 360, marginBottom: 14 }} placeholder="Search the team..." value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search the team" />
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <input type="search" style={{ maxWidth: 360 }} placeholder="Search the team..." value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search the team" />
+        {manager && (
+          <Button variant="primary" onClick={() => setAdding(true)}>
+            <UserPlus size={16} /> Add member
+          </Button>
+        )}
+      </div>
       <div className="card scroll-x" style={{ padding: 0 }}>
         <table className="table">
           <thead>
@@ -70,7 +80,7 @@ function Members() {
                   </div>
                 </td>
                 <td><div className="chips">{u.roles.map((r) => <RoleChip key={r.id} role={r} />)}</div></td>
-                {manager && <td className="small">{u.email}{u.phone && <div className="muted">{u.phone}</div>}</td>}
+                {manager && <td className="small">{u.email ?? <span className="muted">No email</span>}{u.phone && <div className="muted">{u.phone}</div>}</td>}
                 {manager && <td>{u.status === "DISABLED" ? <Badge color="#ed4245">Disabled</Badge> : <Badge color="#3ba55d">Active</Badge>}</td>}
                 <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                   {u.id !== me!.id && u.status !== "DISABLED" && can("messages.send") && (
@@ -93,20 +103,241 @@ function Members() {
             await refreshUsers();
             setManaging(null);
           }}
+          onReset={(c) => {
+            setManaging(null);
+            setCredentials(c);
+          }}
         />
       )}
+      {adding && (
+        <AddMemberModal
+          roles={roles}
+          onClose={() => setAdding(false)}
+          onCreated={async (c) => {
+            await refreshUsers();
+            setAdding(false);
+            setCredentials(c);
+          }}
+        />
+      )}
+      {credentials && <CredentialsModal credentials={credentials} onClose={() => setCredentials(null)} />}
     </>
   );
 }
 
-function ManageMember({ member, roles, onClose, onSaved }: { member: Member; roles: Role[]; onClose: () => void; onSaved: () => Promise<void> }) {
+interface Credentials {
+  displayName: string;
+  username: string;
+  password: string;
+  reset?: boolean;
+}
+
+/** A visible (not masked) password box with a generator: the admin needs to read it out to the member. */
+function PasswordField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        minLength={8}
+        autoComplete="off"
+        spellCheck={false}
+        aria-label="Temporary password"
+        style={{ fontFamily: "Consolas, monospace" }}
+      />
+      <Button type="button" onClick={() => onChange(generatePassword())} title="Generate a random password">
+        <RefreshCw size={14} /> Generate
+      </Button>
+    </div>
+  );
+}
+
+function AddMemberModal({ roles, onClose, onCreated }: { roles: Role[]; onClose: () => void; onCreated: (c: Credentials) => Promise<void> }) {
+  const { can } = useAuth();
+  const [form, setForm] = useState({
+    displayName: "",
+    username: "",
+    email: "",
+    jobTitle: "",
+    roleIds: roles.filter((r) => r.isDefault).map((r) => r.id),
+    password: generatePassword(),
+  });
+  const [usernameEdited, setUsernameEdited] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const isAdmin = can("admin");
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.post("/users", {
+        displayName: form.displayName,
+        username: form.username,
+        email: form.email || undefined,
+        jobTitle: form.jobTitle || null,
+        roleIds: form.roleIds,
+        password: form.password,
+      });
+      await onCreated({ displayName: form.displayName, username: form.username, password: form.password });
+    } catch (e) {
+      setError(errMsg(e));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      title="Add a member"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={submit} disabled={busy || !form.displayName.trim() || form.username.length < 3 || form.password.length < 8}>
+            Create account
+          </Button>
+        </>
+      }
+    >
+      {error && <div className="error-text" role="alert">{error}</div>}
+      <div className="row">
+        <Field label="Display name">
+          <input
+            type="text"
+            value={form.displayName}
+            autoFocus
+            maxLength={60}
+            onChange={(e) => {
+              const displayName = e.target.value;
+              setForm((f) => ({ ...f, displayName, username: usernameEdited ? f.username : suggestUsername(displayName) }));
+            }}
+          />
+        </Field>
+        <Field label="Username" hint="What they sign in with.">
+          <input
+            type="text"
+            value={form.username}
+            maxLength={24}
+            autoCapitalize="none"
+            onChange={(e) => {
+              setUsernameEdited(true);
+              setForm({ ...form, username: e.target.value.toLowerCase() });
+            }}
+          />
+        </Field>
+      </div>
+      <div className="row">
+        <Field label="Email (optional)" hint="Not needed to sign in.">
+          <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+        </Field>
+        <Field label="Job title (optional)">
+          <input type="text" value={form.jobTitle} maxLength={80} onChange={(e) => setForm({ ...form, jobTitle: e.target.value })} />
+        </Field>
+      </div>
+      <Field label="Roles">
+        <div className="chips">
+          {roles.map((r) => {
+            const locked = r.permissions.includes("admin") && !isAdmin;
+            return (
+              <button
+                type="button"
+                key={r.id}
+                disabled={locked}
+                title={locked ? "Only administrators can assign this role" : undefined}
+                className={`chip ${form.roleIds.includes(r.id) ? "active" : ""}`}
+                onClick={() =>
+                  setForm((f) => ({ ...f, roleIds: f.roleIds.includes(r.id) ? f.roleIds.filter((x) => x !== r.id) : [...f.roleIds, r.id] }))
+                }
+              >
+                <i className="dot" style={{ background: r.color }} /> {r.name}
+              </button>
+            );
+          })}
+        </div>
+      </Field>
+      <Field label="Temporary password" hint="They'll be asked to choose their own the first time they sign in.">
+        <PasswordField value={form.password} onChange={(password) => setForm({ ...form, password })} />
+      </Field>
+    </Modal>
+  );
+}
+
+function CredentialsModal({ credentials, onClose }: { credentials: Credentials; onClose: () => void }) {
+  const toast = useToast();
+  const text = `Sign in at ${window.location.origin}\nUsername: ${credentials.username}\nTemporary password: ${credentials.password}`;
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("Login details copied.", "success");
+    } catch {
+      window.prompt("Copy these login details:", text);
+    }
+  }
+
+  return (
+    <Modal
+      title={credentials.reset ? "Password reset" : "Account created"}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={copy}><Copy size={14} /> Copy login details</Button>
+          <Button variant="primary" onClick={onClose}>Done</Button>
+        </>
+      }
+    >
+      <p style={{ marginBottom: 12 }}>
+        Give these to <b>{credentials.displayName}</b> in person or in a private message.
+      </p>
+      <dl className="kv" style={{ background: "var(--bg)", borderRadius: 8, padding: 14, marginBottom: 12 }}>
+        <dt>Username</dt>
+        <dd><code>{credentials.username}</code></dd>
+        <dt>Temporary password</dt>
+        <dd><code>{credentials.password}</code></dd>
+      </dl>
+      <p className="muted small">
+        This password won't be shown again. They'll be asked to choose their own the first time they sign in
+        {credentials.reset ? ", and they've been signed out on all devices" : ""}.
+      </p>
+    </Modal>
+  );
+}
+
+function ManageMember({
+  member,
+  roles,
+  onClose,
+  onSaved,
+  onReset,
+}: {
+  member: Member;
+  roles: Role[];
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+  onReset: (c: Credentials) => void;
+}) {
   const { me, can } = useAuth();
   const toast = useToast();
   const [roleIds, setRoleIds] = useState(member.roles.map((r) => r.id));
   const [jobTitle, setJobTitle] = useState(member.jobTitle ?? "");
   const [disabled, setDisabled] = useState(member.status === "DISABLED");
   const [busy, setBusy] = useState(false);
+  const [resetPw, setResetPw] = useState<string | null>(null);
   const isAdmin = can("admin");
+  const targetIsAdmin = member.roles.some((m) => roles.find((r) => r.id === m.id)?.permissions.includes("admin"));
+  // The server enforces the same rules; this just hides the button when it would be refused.
+  const canReset = member.id !== me!.id && !(member.isOwner && !me!.isOwner) && !(targetIsAdmin && !isAdmin);
+
+  async function reset() {
+    if (!resetPw) return;
+    try {
+      await api.post(`/users/${member.id}/password`, { password: resetPw });
+      onReset({ displayName: member.displayName, username: member.username, password: resetPw, reset: true });
+    } catch (e) {
+      toast(errMsg(e), "error");
+    }
+  }
 
   async function save() {
     setBusy(true);
@@ -152,6 +383,27 @@ function ManageMember({ member, roles, onClose, onSaved }: { member: Member; rol
           })}
         </div>
       </Field>
+      {canReset && (
+        <div className="card" style={{ marginBottom: 14, padding: 12 }}>
+          <b>Forgot their password?</b>
+          <p className="muted small" style={{ margin: "4px 0 10px" }}>
+            Set a temporary password and tell them what it is. They'll be signed out everywhere and must choose their own at their next sign-in.
+          </p>
+          {resetPw === null ? (
+            <Button small type="button" onClick={() => setResetPw(generatePassword())}>
+              <KeyRound size={14} /> Reset password
+            </Button>
+          ) : (
+            <>
+              <PasswordField value={resetPw} onChange={setResetPw} />
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <Button small variant="danger" type="button" onClick={reset} disabled={resetPw.length < 8}>Set this password</Button>
+                <Button small variant="ghost" type="button" onClick={() => setResetPw(null)}>Cancel</Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
       {member.id !== me!.id && !member.isOwner && (
         <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input type="checkbox" checked={disabled} onChange={(e) => setDisabled(e.target.checked)} />

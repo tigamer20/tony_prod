@@ -1,6 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
+import { Camera, Trash2 } from "lucide-react";
 import { api, errMsg } from "../api";
 import { useAuth } from "../auth";
+import { resizeAvatar } from "../lib";
 import { Avatar, Button, Field, Modal, RoleChip, useToast } from "../ui";
 
 const COLORS = ["#5865f2", "#eb459e", "#3ba55d", "#f0b232", "#ed4245", "#1abc9c", "#9b59b6", "#e67e22"];
@@ -19,6 +21,41 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
   const [pw, setPw] = useState({ currentPassword: "", newPassword: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const photoInput = useRef<HTMLInputElement>(null);
+
+  async function choosePhoto(file: File) {
+    setPhotoBusy(true);
+    setError("");
+    try {
+      if (!file.type.startsWith("image/")) throw new Error("Please choose an image file.");
+      const blob = await resizeAvatar(file).catch(() => {
+        throw new Error("That image couldn't be read. Try a PNG or JPEG.");
+      });
+      const body = new FormData();
+      body.append("avatar", blob, blob.type === "image/webp" ? "photo.webp" : "photo.jpg");
+      await api.upload("/auth/avatar", body);
+      await refresh();
+      toast("Profile photo updated.", "success");
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function removePhoto() {
+    setPhotoBusy(true);
+    try {
+      await api.del("/auth/avatar");
+      await refresh();
+      toast("Profile photo removed.", "success");
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -67,13 +104,34 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
       <form id="profile-form" onSubmit={save}>
         {tab === "profile" ? (
           <>
-            <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
-              <Avatar user={{ displayName: form.displayName || "?", avatarColor: form.avatarColor }} size={56} />
+            <div style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 16 }}>
+              <Avatar user={{ id: me!.id, avatarUpdatedAt: me!.avatarUpdatedAt, displayName: form.displayName || "?", avatarColor: form.avatarColor }} size={80} />
               <div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                  <input
+                    ref={photoInput}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    hidden
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void choosePhoto(f);
+                      e.target.value = "";
+                    }}
+                  />
+                  <Button small type="button" onClick={() => photoInput.current?.click()} disabled={photoBusy}>
+                    <Camera size={14} /> {me!.avatarUpdatedAt ? "Change photo" : "Upload photo"}
+                  </Button>
+                  {me!.avatarUpdatedAt && (
+                    <Button small variant="ghost" type="button" onClick={removePhoto} disabled={photoBusy}>
+                      <Trash2 size={14} /> Remove
+                    </Button>
+                  )}
+                </div>
                 <div className="chips" style={{ marginBottom: 6 }}>
                   {me!.roles.map((r) => <RoleChip key={r.id} role={r} />)}
                 </div>
-                <div className="muted small">@{me!.username} · {me!.email}</div>
+                <div className="muted small">@{me!.username}{me!.email ? ` · ${me!.email}` : ""}</div>
               </div>
             </div>
             <Field label="Display name">
@@ -90,7 +148,7 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
             <Field label="Bio">
               <textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} maxLength={500} />
             </Field>
-            <Field label="Avatar color">
+            <Field label="Avatar color" hint="Used behind your initials when you have no photo.">
               <div className="chips">
                 {COLORS.map((c) => (
                   <button

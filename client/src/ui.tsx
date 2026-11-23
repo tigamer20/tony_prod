@@ -50,10 +50,26 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 // ─── Primitives ──────────────────────────────────────────────────────────
 
-export function Avatar({ user, size = 36, online }: { user: Pick<MiniUser, "displayName" | "avatarColor">; size?: number; online?: boolean }) {
+/** Latest photo version per member, so a changed photo shows up everywhere without a reload. */
+export const AvatarVersions = createContext<Map<string, string | null>>(new Map());
+
+export function Avatar({
+  user,
+  size = 36,
+  online,
+}: {
+  user: Pick<MiniUser, "displayName" | "avatarColor"> & Partial<Pick<MiniUser, "id" | "avatarUpdatedAt">>;
+  size?: number;
+  online?: boolean;
+}) {
+  const versions = useContext(AvatarVersions);
+  const version = user.id && versions.has(user.id) ? versions.get(user.id) : user.avatarUpdatedAt;
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [version]);
+  const src = user.id && version && !failed ? `/api/avatars/${user.id}?v=${encodeURIComponent(version)}` : null;
   return (
     <span className="avatar" style={{ width: size, height: size, background: user.avatarColor, fontSize: size * 0.4 }} aria-hidden>
-      {initials(user.displayName)}
+      {src ? <img src={src} alt="" onError={() => setFailed(true)} draggable={false} /> : initials(user.displayName)}
       {online !== undefined && <span className={`presence ${online ? "on" : ""}`} />}
     </span>
   );

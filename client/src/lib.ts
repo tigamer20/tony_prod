@@ -73,3 +73,37 @@ export const PRIORITY_COLOR: Record<string, string> = {
 };
 
 export const PRODUCTION_KINDS = ["Commercial", "Music video", "Corporate", "Documentary", "Short film", "Social content", "Event", "Other"];
+
+/** Readable random password without look-alike characters (no 0/O, 1/l/I). */
+export function generatePassword(length = 12): string {
+  const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+}
+
+/** "Maya Chen" -> "maya.chen", for suggesting a username. */
+export const suggestUsername = (displayName: string) =>
+  displayName
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
+    .slice(0, 24);
+
+/** Center-crops an image to a square and shrinks it, so profile photos stay tiny (a few KB). */
+export async function resizeAvatar(file: File, size = 256): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
+  bitmap.close();
+  const toBlob = (type: string, quality: number) => new Promise<Blob | null>((res) => canvas.toBlob(res, type, quality));
+  const webp = await toBlob("image/webp", 0.88);
+  if (webp && webp.type === "image/webp") return webp;
+  const jpeg = await toBlob("image/jpeg", 0.88);
+  if (!jpeg) throw new Error("Could not process that image.");
+  return jpeg;
+}

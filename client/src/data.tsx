@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { io, type Socket } from "socket.io-client";
 import { api } from "./api";
 import { useAuth } from "./auth";
-import { useToast } from "./ui";
+import { AvatarVersions, useToast } from "./ui";
 import type { Announcement, Channel, Member, Message, Production, Role } from "./types";
 
 interface DataState {
@@ -159,5 +159,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [users, roles, online, channels, productions, unreadAnnouncements, socket, refreshChannels, refreshUsers, refreshProductions, refreshAnnouncements],
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  const avatarVersions = useMemo(() => new Map(users.map((u) => [u.id, u.avatarUpdatedAt ?? null])), [users]);
+
+  return (
+    <Ctx.Provider value={value}>
+      <AvatarVersions.Provider value={avatarVersions}>{children}</AvatarVersions.Provider>
+    </Ctx.Provider>
+  );
 }

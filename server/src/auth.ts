@@ -10,7 +10,7 @@ const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface AuthUser {
   id: string;
-  email: string;
+  email: string | null;
   username: string;
   displayName: string;
   isOwner: boolean;
@@ -45,22 +45,32 @@ export function clearSessionCookie(res: Response) {
   res.clearCookie(COOKIE_NAME, { path: "/" });
 }
 
-export function verifyToken(token: string | undefined): string | null {
+export interface TokenInfo {
+  sub: string;
+  /** Issued-at, in seconds. */
+  iat: number;
+}
+
+export function verifyToken(token: string | undefined): TokenInfo | null {
   if (!token) return null;
   try {
-    const payload = jwt.verify(token, config.jwtSecret) as { sub?: string };
-    return payload.sub ?? null;
+    const payload = jwt.verify(token, config.jwtSecret) as { sub?: string; iat?: number };
+    return payload.sub ? { sub: payload.sub, iat: payload.iat ?? 0 } : null;
   } catch {
     return null;
   }
 }
 
-export async function loadAuthUser(userId: string): Promise<AuthUser | null> {
+/** Loads the signed-in user. Pass the token's issue time to reject sessions older than a password change. */
+export async function loadAuthUser(userId: string, issuedAt?: number): Promise<AuthUser | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: { roles: { select: { id: true, permissions: true } } },
   });
   if (!user || user.status !== "ACTIVE") return null;
+  if (issuedAt !== undefined && user.sessionsValidFrom && issuedAt < Math.floor(user.sessionsValidFrom.getTime() / 1000)) {
+    return null;
+  }
   return {
     id: user.id,
     email: user.email,
@@ -73,9 +83,9 @@ export async function loadAuthUser(userId: string): Promise<AuthUser | null> {
 }
 
 export async function requireAuth(req: Request, _res: Response, next: NextFunction) {
-  const userId = verifyToken(req.cookies?.[COOKIE_NAME]);
-  if (!userId) return next(new HttpError(401, "Please sign in."));
-  const user = await loadAuthUser(userId);
+  const token = verifyToken(req.cookies?.[COOKIE_NAME]);
+  if (!token) return next(new HttpError(401, "Please sign in."));
+  const user = await loadAuthUser(token.sub, token.iat);
   if (!user) return next(new HttpError(401, "Please sign in."));
   req.user = user;
   next();

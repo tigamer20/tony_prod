@@ -75,8 +75,8 @@ export function AuthPage() {
                 <input type="text" value={form.username} onChange={set("username")} autoComplete="username" required />
               </Field>
             </div>
-            <Field label="Email">
-              <input type="email" value={form.email} onChange={set("email")} autoComplete="email" required />
+            <Field label="Email (optional)">
+              <input type="email" value={form.email} onChange={set("email")} autoComplete="email" />
             </Field>
             {!needsSetup && (
               <Field label="Invite code">

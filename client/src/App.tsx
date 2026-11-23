@@ -23,6 +23,7 @@ import { ChatPage } from "./pages/Chat";
 import { Dashboard } from "./pages/Dashboard";
 import { DocumentEditor } from "./pages/DocumentEditor";
 import { DocumentsPage } from "./pages/Documents";
+import { ForcePassword } from "./pages/ForcePassword";
 import { ProductionDetail, ProductionsPage } from "./pages/Productions";
 import { ProfileModal } from "./pages/Profile";
 import { TasksPage } from "./pages/Tasks";
@@ -32,6 +33,7 @@ export function App() {
   const { me, loading } = useAuth();
   if (loading) return <Spinner />;
   if (!me) return <AuthPage />;
+  if (me.mustChangePassword) return <ForcePassword />;
   return (
     <DataProvider>
       <Shell />

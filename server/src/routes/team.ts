@@ -1,10 +1,11 @@
 import crypto from "node:crypto";
+import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
 import { can, requirePerm } from "../auth.js";
 import { prisma } from "../db.js";
-import { badRequest, forbidden, notFound, param, parse } from "../lib/http.js";
-import { memberDetailSelect, publicUserSelect } from "../lib/serialize.js";
+import { badRequest, forbidden, HttpError, notFound, param, parse } from "../lib/http.js";
+import { AVATAR_COLORS, memberDetailSelect, publicUserSelect } from "../lib/serialize.js";
 import { ALL_PERMISSION_KEYS, PERMISSION_CATALOG } from "../permissions.js";
 import { emitAll, onlineUserIds } from "../realtime.js";
 
@@ -57,6 +58,113 @@ teamRouter.patch("/users/:id", requirePerm("members.manage"), async (req, res) =
   });
   emitAll("users:changed", { id: target.id });
   res.json(updated);
+});
+
+// ─── Accounts created by an admin ────────────────────────────────────────
+
+const createUserSchema = z.object({
+  username: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9_.-]{3,24}$/, "Username must be 3-24 letters, numbers, dots, dashes or underscores."),
+  displayName: z.string().trim().min(1, "Display name is required.").max(60),
+  // Optional: a username is enough to have an account.
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(z.email("Enter a valid email address."))
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  jobTitle: z.string().trim().max(80).nullable().optional(),
+  password: z.string().min(8, "Password must be at least 8 characters.").max(200),
+  roleIds: z.array(z.string()).default([]),
+});
+
+teamRouter.post("/users", requirePerm("members.manage"), async (req, res) => {
+  const actor = req.user!;
+  const body = parse(createUserSchema, req.body);
+
+  const clash = await prisma.user.findFirst({
+    // Only compare emails when one was given: an undefined filter inside OR would match every row.
+    where: { OR: [...(body.email ? [{ email: body.email }] : []), { username: body.username }] },
+    select: { email: true },
+  });
+  if (clash) {
+    throw new HttpError(409, body.email && clash.email === body.email ? "That email is already registered." : "That username is taken.");
+  }
+
+  let roleIds = body.roleIds;
+  if (roleIds.length) {
+    const roles = await prisma.role.findMany({ where: { id: { in: roleIds } } });
+    if (roles.length !== new Set(roleIds).size) throw badRequest("Unknown role.");
+    if (roles.some((r) => r.permissions.includes("admin")) && !actor.perms.has("admin")) {
+      throw forbidden("Only administrators can create administrator accounts.");
+    }
+  } else {
+    const fallback = await prisma.role.findFirst({ where: { isDefault: true } });
+    roleIds = fallback ? [fallback.id] : [];
+  }
+
+  const user = await prisma.user.create({
+    data: {
+      username: body.username,
+      displayName: body.displayName,
+      email: body.email ?? null,
+      jobTitle: body.jobTitle ?? null,
+      passwordHash: await bcrypt.hash(body.password, 12),
+      // The admin chose this password, so the member must replace it the first time they sign in.
+      mustChangePassword: true,
+      avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
+      roles: { connect: roleIds.map((id) => ({ id })) },
+    },
+    select: memberDetailSelect,
+  });
+  emitAll("users:changed", { id: user.id });
+  res.status(201).json(user);
+});
+
+teamRouter.post("/users/:id/password", requirePerm("members.manage"), async (req, res) => {
+  const actor = req.user!;
+  const target = await prisma.user.findUnique({
+    where: { id: param(req, "id") },
+    include: { roles: { select: { permissions: true } } },
+  });
+  if (!target) throw notFound("Member not found.");
+  if (target.id === actor.id) throw badRequest("Change your own password from your profile.");
+  if (target.isOwner && !actor.isOwner) throw forbidden("Only the workspace owner can reset the owner's password.");
+  if (target.roles.some((r) => r.permissions.includes("admin")) && !actor.perms.has("admin")) {
+    throw forbidden("Only administrators can reset an administrator's password.");
+  }
+  const { password } = parse(z.object({ password: z.string().min(8, "Password must be at least 8 characters.").max(200) }), req.body);
+  await prisma.user.update({
+    where: { id: target.id },
+    data: {
+      passwordHash: await bcrypt.hash(password, 12),
+      mustChangePassword: true,
+      // Signs the member out everywhere; they come back in with the new temporary password.
+      sessionsValidFrom: new Date(),
+    },
+  });
+  res.json({ ok: true });
+});
+
+// ─── Profile photos ──────────────────────────────────────────────────────
+
+teamRouter.get("/avatars/:id", async (req, res) => {
+  const user = await prisma.user.findUnique({
+    where: { id: param(req, "id") },
+    select: { avatar: true, avatarType: true },
+  });
+  if (!user?.avatar || !user.avatarType) throw notFound("No photo.");
+  res.setHeader("Content-Type", user.avatarType);
+  res.setHeader("Content-Length", String(user.avatar.byteLength));
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
+  // The URL carries the upload time (?v=), so a new photo always gets a new URL.
+  res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+  res.end(Buffer.from(user.avatar));
 });
 
 // ─── Roles ───────────────────────────────────────────────────────────────

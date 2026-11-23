@@ -16,7 +16,8 @@ enum UserStatus {
 
 model User {
   id           String     @id @default(cuid())
-  email        String     @unique
+  /// Optional: accounts can be created by an admin with just a username.
+  email        String?    @unique
   username     String     @unique
   displayName  String
   passwordHash String
@@ -24,6 +25,14 @@ model User {
   jobTitle     String?
   phone        String?
   bio          String?
+  /// Profile photo, stored in the database (resized by the browser before upload).
+  avatar          Bytes?
+  avatarType      String?
+  avatarUpdatedAt DateTime?
+  /// Set when an admin creates the account or resets the password; the member must choose their own.
+  mustChangePassword Boolean   @default(false)
+  /// Sessions issued before this moment are rejected (set on password changes and resets).
+  sessionsValidFrom  DateTime?
   status       UserStatus @default(ACTIVE)
   isOwner      Boolean    @default(false)
   createdAt    DateTime   @default(now())

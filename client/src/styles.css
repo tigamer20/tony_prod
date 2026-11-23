@@ -76,6 +76,7 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--brand); 
 
 /* ── Misc primitives ─────────────────────────────────────── */
 .avatar { position: relative; display: inline-grid; place-items: center; flex: none; border-radius: 50%; color: #fff; font-weight: 700; user-select: none; }
+.avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
 .presence { position: absolute; right: -2px; bottom: -2px; width: 11px; height: 11px; border-radius: 50%; background: var(--text-3); border: 2px solid var(--bg-2); }
 .presence.on { background: var(--green); }
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--bg-4); color: var(--text-2); border: 1px solid transparent; white-space: nowrap; }
@@ -121,7 +122,7 @@ table.table { width: 100%; border-collapse: collapse; }
 
 /* ── App shell ───────────────────────────────────────────── */
 .app { display: grid; grid-template-columns: var(--nav-w) 1fr; height: 100%; }
-.nav { background: var(--bg); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; overflow-y: auto; }
+.nav { background: var(--bg); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; overflow-y: auto; overflow-x: hidden; }
 .nav-logo { width: 44px; height: 44px; border-radius: 14px; background: var(--brand); display: grid; place-items: center; margin-bottom: 8px; color: #fff; }
 .nav a.nav-item { position: relative; width: 62px; padding: 8px 2px 6px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--text-2); font-size: 11px; text-decoration: none; }
 .nav a.nav-item:hover { background: var(--bg-3); color: var(--text); }
@@ -135,7 +136,8 @@ table.table { width: 100%; border-collapse: collapse; }
 .page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .menu { position: relative; display: inline-block; }
 .menu-pop { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 190px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px; box-shadow: 0 10px 30px #0008; }
-.menu-pop.left-up { right: auto; left: 8px; top: auto; bottom: 8px; }
+/* Fixed so the narrow, scrollable nav bar can't clip it. */
+.menu-pop.left-up { position: fixed; right: auto; top: auto; left: calc(var(--nav-w) + 6px); bottom: 12px; width: 230px; }
 .menu-pop button, .menu-pop a { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 5px; background: none; text-align: left; color: var(--text); text-decoration: none; }
 .menu-pop button:hover, .menu-pop a:hover { background: var(--brand); text-decoration: none; }
 .menu-pop .sep { height: 1px; background: var(--border); margin: 4px 0; }
@@ -311,6 +313,8 @@ a.list-item:hover { background: #ffffff06; text-decoration: none; }
   .nav { grid-row: 2; flex-direction: row; justify-content: space-around; padding: 4px; overflow-x: auto; gap: 0; }
   .nav-logo, .nav-spacer { display: none; }
   .nav a.nav-item { width: 56px; flex: none; }
+  .nav { overflow-x: auto; overflow-y: hidden; }
+  .menu-pop.left-up { left: 8px; bottom: 76px; }
   .content { padding: 18px 16px 32px; }
   .chat { grid-template-columns: 1fr; }
   .chat.has-channel .chat-side { display: none; }

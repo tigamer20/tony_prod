@@ -27,7 +27,8 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     return;
   }
   if (typeof err === "object" && err && "code" in err && (err as { code?: string }).code === "LIMIT_FILE_SIZE") {
-    res.status(413).json({ error: "File is too large (10 MB max)." });
+    const isAvatar = (err as { field?: string }).field === "avatar";
+    res.status(413).json({ error: isAvatar ? "That photo is too large (1 MB max)." : "File is too large (10 MB max)." });
     return;
   }
   console.error(err);

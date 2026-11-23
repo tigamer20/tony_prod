@@ -3,6 +3,8 @@ export interface MiniUser {
   username: string;
   displayName: string;
   avatarColor: string;
+  /** When the profile photo was last set; null/undefined means no photo. */
+  avatarUpdatedAt?: string | null;
 }
 
 export interface RoleBrief {
@@ -15,7 +17,8 @@ export interface RoleBrief {
 export interface Member extends MiniUser {
   jobTitle: string | null;
   roles: RoleBrief[];
-  email?: string;
+  email?: string | null;
+  mustChangePassword?: boolean;
   phone?: string | null;
   bio?: string | null;
   status?: "ACTIVE" | "DISABLED";
