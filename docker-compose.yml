@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tonyprod
+      POSTGRES_PASSWORD: tonyprod
+      POSTGRES_DB: tonyprod
+    ports:
+      - "5433:5432"
+    volumes:
+      - tonyprod-db:/var/lib/postgresql/data
+
+volumes:
+  tonyprod-db:

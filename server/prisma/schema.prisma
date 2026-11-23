@@ -1,0 +1,356 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── People, roles, access ───────────────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  username     String     @unique
+  displayName  String
+  passwordHash String
+  avatarColor  String     @default("#5865f2")
+  jobTitle     String?
+  phone        String?
+  bio          String?
+  status       UserStatus @default(ACTIVE)
+  isOwner      Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  lastSeenAt   DateTime?
+
+  roles               Role[]               @relation("UserRoles")
+  messages            Message[]
+  reactions           Reaction[]
+  channelMembers      ChannelMember[]
+  uploads             Attachment[]
+  productionsMember   ProductionMember[]
+  productionsCreated  Production[]         @relation("ProductionCreator")
+  tasksAssigned       Task[]               @relation("TaskAssignee")
+  tasksCreated        Task[]               @relation("TaskCreator")
+  eventsCreated       Event[]              @relation("EventCreator")
+  eventAttendance     EventAttendee[]
+  announcements       Announcement[]
+  announcementReads   AnnouncementRead[]
+  documentsCreated    Document[]           @relation("DocumentCreator")
+  documentsUpdated    Document[]           @relation("DocumentUpdater")
+  documentVersions    DocumentVersion[]
+  invitesCreated      Invite[]
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  color       String   @default("#99aab5")
+  permissions String[]
+  position    Int      @default(0)
+  isDefault   Boolean  @default(false)
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  users    User[]    @relation("UserRoles")
+  channels Channel[] @relation("ChannelRoles")
+  invites  Invite[]
+}
+
+model Invite {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  email       String?
+  roleId      String?
+  role        Role?     @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  maxUses     Int       @default(1)
+  uses        Int       @default(0)
+  expiresAt   DateTime?
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+}
+
+// ─── Chat ────────────────────────────────────────────────────────────────
+
+enum ChannelType {
+  TEXT
+  DM
+}
+
+model Channel {
+  id           String      @id @default(cuid())
+  name         String
+  topic        String?
+  type         ChannelType @default(TEXT)
+  category     String      @default("General")
+  position     Int         @default(0)
+  isPrivate    Boolean     @default(false)
+  productionId String?
+  production   Production? @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime    @default(now())
+
+  allowedRoles Role[]          @relation("ChannelRoles")
+  members      ChannelMember[]
+  messages     Message[]
+}
+
+model ChannelMember {
+  channelId  String
+  userId     String
+  lastReadAt DateTime @default(now())
+  channel    Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, userId])
+}
+
+model Message {
+  id        String    @id @default(cuid())
+  channelId String
+  channel   Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content   String
+  replyToId String?
+  replyTo   Message?  @relation("Replies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[] @relation("Replies")
+  pinned    Boolean   @default(false)
+  editedAt  DateTime?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  attachments Attachment[]
+  reactions   Reaction[]
+
+  @@index([channelId, createdAt])
+}
+
+model Attachment {
+  id         String   @id @default(cuid())
+  messageId  String?
+  message    Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  uploaderId String
+  uploader   User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  fileName   String
+  mimeType   String
+  size       Int
+  storageKey String   @unique
+  createdAt  DateTime @default(now())
+}
+
+model Reaction {
+  id        String  @id @default(cuid())
+  messageId String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String
+
+  @@unique([messageId, userId, emoji])
+}
+
+// ─── Productions & work ──────────────────────────────────────────────────
+
+enum ProductionStatus {
+  DEVELOPMENT
+  PRE_PRODUCTION
+  PRODUCTION
+  POST_PRODUCTION
+  DELIVERED
+  ARCHIVED
+}
+
+model Production {
+  id           String           @id @default(cuid())
+  title        String
+  client       String?
+  kind         String           @default("Other")
+  status       ProductionStatus @default(DEVELOPMENT)
+  description  String?
+  location     String?
+  budget       Int?
+  color        String           @default("#5865f2")
+  startDate    DateTime?
+  endDate      DateTime?
+  deliveryDate DateTime?
+  createdById  String
+  createdBy    User             @relation("ProductionCreator", fields: [createdById], references: [id])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  members       ProductionMember[]
+  channels      Channel[]
+  tasks         Task[]
+  events        Event[]
+  announcements Announcement[]
+  documents     Document[]
+}
+
+model ProductionMember {
+  productionId String
+  userId       String
+  jobTitle     String?
+  production   Production @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([productionId, userId])
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Task {
+  id           String       @id @default(cuid())
+  title        String
+  description  String?
+  status       TaskStatus   @default(TODO)
+  priority     TaskPriority @default(MEDIUM)
+  dueDate      DateTime?
+  position     Int          @default(0)
+  productionId String?
+  production   Production?  @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  assigneeId   String?
+  assignee     User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdById  String
+  createdBy    User         @relation("TaskCreator", fields: [createdById], references: [id])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+enum EventType {
+  SHOOT
+  MEETING
+  SCOUT
+  REVIEW
+  DEADLINE
+  DELIVERY
+  OTHER
+}
+
+enum RsvpStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+model Event {
+  id           String      @id @default(cuid())
+  title        String
+  description  String?
+  type         EventType   @default(OTHER)
+  start        DateTime
+  end          DateTime
+  allDay       Boolean     @default(false)
+  location     String?
+  productionId String?
+  production   Production? @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  createdById  String
+  createdBy    User        @relation("EventCreator", fields: [createdById], references: [id])
+  createdAt    DateTime    @default(now())
+
+  attendees EventAttendee[]
+
+  @@index([start])
+}
+
+model EventAttendee {
+  eventId String
+  userId  String
+  status  RsvpStatus @default(PENDING)
+  event   Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user    User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+}
+
+enum AnnouncementPriority {
+  NORMAL
+  IMPORTANT
+  URGENT
+}
+
+model Announcement {
+  id           String               @id @default(cuid())
+  title        String
+  body         String
+  priority     AnnouncementPriority @default(NORMAL)
+  pinned       Boolean              @default(false)
+  productionId String?
+  production   Production?          @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  authorId     String
+  author       User                 @relation(fields: [authorId], references: [id])
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  reads AnnouncementRead[]
+}
+
+model AnnouncementRead {
+  announcementId String
+  userId         String
+  readAt         DateTime     @default(now())
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([announcementId, userId])
+}
+
+// ─── Documents ───────────────────────────────────────────────────────────
+
+enum DocumentType {
+  SCRIPT
+  CALL_SHEET
+  SHOT_LIST
+  TREATMENT
+  SCHEDULE
+  BUDGET
+  CONTRACT
+  NOTES
+  OTHER
+}
+
+model Document {
+  id           String       @id @default(cuid())
+  title        String
+  type         DocumentType @default(OTHER)
+  content      Json
+  productionId String?
+  production   Production?  @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  createdById  String
+  createdBy    User         @relation("DocumentCreator", fields: [createdById], references: [id])
+  updatedById  String
+  updatedBy    User         @relation("DocumentUpdater", fields: [updatedById], references: [id])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  versions DocumentVersion[]
+}
+
+model DocumentVersion {
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  title       String
+  content     Json
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+}
