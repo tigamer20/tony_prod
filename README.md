@@ -8,7 +8,7 @@ calendar, productions, tasks, announcements, and documents with import and expor
 - **Accounts & access** – invite-only sign-up (the first account becomes the workspace owner), custom roles with
   fine-grained permissions, member management, invite links, disabled accounts.
 - **Chat** – channels grouped by category, private channels limited to chosen roles, direct messages, replies,
-  reactions, edits, pins, file/image attachments (drag & drop or paste), typing indicators, unread badges,
+  reactions, edits, pins, file/image attachments up to 10 MB (drag & drop or paste), typing indicators, unread badges,
   online presence, message search. Messages arrive live over WebSockets.
 - **Calendar** – month and agenda views, event types (shoot, meeting, scout, review, deadline, delivery), attendees
   with accept/decline, per-production filter, `.ics` export for Google/Apple/Outlook.
@@ -50,8 +50,9 @@ the seed script prints their shared demo password. Never run the seed in product
 `npm run build` compiles the server and the client. In production the API also serves the built web app, so a single
 Node service is enough (for example Render): build command `npm install && npm run build`, start command
 `npm run start`. Set `DATABASE_URL` (a Neon connection string works), a long random `JWT_SECRET`, and
-`NODE_ENV=production`. Uploaded files are stored on disk at `UPLOAD_DIR`; on hosts with ephemeral disks, attach a
-persistent disk or move uploads to object storage before relying on them.
+`NODE_ENV=production`. Chat attachments are stored in the database (10 MB per file, 300 MB in total by default; change
+the total with `UPLOAD_STORAGE_LIMIT_MB`), so they survive hosts with ephemeral disks such as Render's free plan.
+Neon's free plan holds 0.5 GB for everything, so for large video files move uploads to object storage instead.
 
 ## Layout
 

@@ -288,7 +288,11 @@ chatRouter.delete("/messages/:id", async (req, res) => {
   if (msg.authorId !== req.user!.id && !can(req.user!, "messages.moderate")) {
     throw forbidden("You can only delete your own messages.");
   }
-  await prisma.message.update({ where: { id: msg.id }, data: { deletedAt: new Date(), content: "", pinned: false } });
+  await prisma.$transaction([
+    prisma.message.update({ where: { id: msg.id }, data: { deletedAt: new Date(), content: "", pinned: false } }),
+    // Free the database space the attached files were using.
+    prisma.attachment.deleteMany({ where: { messageId: msg.id } }),
+  ]);
   emitToChannel(msg.channelId, "message:delete", { id: msg.id, channelId: msg.channelId });
   res.json({ ok: true });
 });

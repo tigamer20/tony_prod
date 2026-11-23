@@ -1,23 +1,16 @@
-import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
 import { Router } from "express";
 import multer from "multer";
 import { canAccessChannel } from "../access.js";
 import { requirePerm } from "../auth.js";
 import { config } from "../config.js";
 import { prisma } from "../db.js";
-import { badRequest, notFound, param } from "../lib/http.js";
+import { badRequest, HttpError, notFound, param } from "../lib/http.js";
 
 export const filesRouter = Router();
 
-fs.mkdirSync(config.uploadDir, { recursive: true });
-
+// Files are held in memory just long enough to be written to the database.
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: config.uploadDir,
-    filename: (_req, _file, cb) => cb(null, crypto.randomUUID()),
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: config.maxUploadBytes, files: 5 },
 });
 
@@ -30,6 +23,13 @@ const INLINE_TYPES = new Set([
 filesRouter.post("/uploads", requirePerm("files.upload"), upload.array("files", 5), async (req, res) => {
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
   if (files.length === 0) throw badRequest("No file received.");
+
+  const incoming = files.reduce((n, f) => n + f.size, 0);
+  const used = (await prisma.attachment.aggregate({ _sum: { size: true } }))._sum.size ?? 0;
+  if (used + incoming > config.maxStorageBytes) {
+    throw new HttpError(507, "The workspace's file storage is full. Ask an administrator to free up space.");
+  }
+
   const created = await Promise.all(
     files.map((f) =>
       prisma.attachment.create({
@@ -39,7 +39,7 @@ filesRouter.post("/uploads", requirePerm("files.upload"), upload.array("files", 
           fileName: Buffer.from(f.originalname, "latin1").toString("utf8").slice(0, 200),
           mimeType: f.mimetype || "application/octet-stream",
           size: f.size,
-          storageKey: f.filename,
+          data: new Uint8Array(f.buffer),
         },
         select: { id: true, fileName: true, mimeType: true, size: true },
       }),
@@ -62,11 +62,9 @@ filesRouter.get("/files/:id", async (req, res) => {
     throw notFound("File not found.");
   }
 
-  const filePath = path.join(config.uploadDir, att.storageKey);
-  if (!fs.existsSync(filePath)) throw notFound("File not found.");
-
   const inline = INLINE_TYPES.has(att.mimeType);
   res.setHeader("Content-Type", inline ? att.mimeType : "application/octet-stream");
+  res.setHeader("Content-Length", String(att.data.byteLength));
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
   res.setHeader("Cache-Control", "private, max-age=3600");
@@ -74,5 +72,12 @@ filesRouter.get("/files/:id", async (req, res) => {
     "Content-Disposition",
     `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(att.fileName)}`,
   );
-  fs.createReadStream(filePath).pipe(res);
+  res.end(Buffer.from(att.data));
 });
+
+/** Uploads that never got attached to a message are only wasting database space. */
+export async function deleteAbandonedUploads() {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const result = await prisma.attachment.deleteMany({ where: { messageId: null, createdAt: { lt: cutoff } } });
+  if (result.count) console.log(`[uploads] removed ${result.count} abandoned upload(s)`);
+}

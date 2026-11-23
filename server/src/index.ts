@@ -13,7 +13,7 @@ import { initRealtime } from "./realtime.js";
 import { authRouter } from "./routes/auth.js";
 import { chatRouter } from "./routes/chat.js";
 import { documentsRouter } from "./routes/documents.js";
-import { filesRouter } from "./routes/files.js";
+import { deleteAbandonedUploads, filesRouter } from "./routes/files.js";
 import { teamRouter } from "./routes/team.js";
 import { workRouter } from "./routes/work.js";
 
@@ -55,6 +55,8 @@ const server = http.createServer(app);
 initRealtime(server);
 
 await ensureDefaults();
+await deleteAbandonedUploads().catch((e) => console.error("[uploads] cleanup failed", e));
+setInterval(() => void deleteAbandonedUploads().catch(() => {}), 6 * 60 * 60 * 1000).unref();
 server.listen(config.port, () => {
   console.log(`Tony Prod server listening on http://localhost:${config.port}`);
 });

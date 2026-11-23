@@ -27,7 +27,7 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     return;
   }
   if (typeof err === "object" && err && "code" in err && (err as { code?: string }).code === "LIMIT_FILE_SIZE") {
-    res.status(413).json({ error: "File is too large (25 MB max)." });
+    res.status(413).json({ error: "File is too large (10 MB max)." });
     return;
   }
   console.error(err);

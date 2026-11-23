@@ -141,8 +141,11 @@ model Attachment {
   fileName   String
   mimeType   String
   size       Int
-  storageKey String   @unique
+  /// File contents live in the database so they survive hosts with ephemeral disks.
+  data       Bytes
   createdAt  DateTime @default(now())
+
+  @@index([messageId])
 }
 
 model Reaction {
