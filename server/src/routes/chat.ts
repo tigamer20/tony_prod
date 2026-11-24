@@ -1,4 +1,5 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { canAccessChannel, visibleChannelWhere } from "../access.js";
 import { can, requirePerm } from "../auth.js";
@@ -238,7 +239,17 @@ const sendSchema = z.object({
   attachmentIds: z.array(z.string()).max(10).default([]),
 });
 
-chatRouter.post("/channels/:id/messages", requirePerm("messages.send"), async (req, res) => {
+// Flood protection per person: plenty for real conversation, far too little for spamming Enter or a script.
+const sendLimiter = rateLimit({
+  windowMs: 10_000,
+  limit: 12,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user!.id,
+  message: { error: "You're sending messages too fast. Wait a moment and try again." },
+});
+
+chatRouter.post("/channels/:id/messages", requirePerm("messages.send"), sendLimiter, async (req, res) => {
   const user = req.user!;
   const channel = await canAccessChannel(user, param(req, "id"));
   if (!channel) throw notFound("Channel not found.");

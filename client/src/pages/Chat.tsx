@@ -170,7 +170,13 @@ function ChatView({ channel, onEdit }: { channel: Channel; onEdit: () => void })
   const lastTyping = useRef(0);
   const fileInput = useRef<HTMLInputElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
+  const sending = useRef(false);
   const prependHeight = useRef<number | null>(null);
+
+  // Shrink the box back to one line once its text has been sent or cleared.
+  useEffect(() => {
+    if (!text && textRef.current) textRef.current.style.height = "auto";
+  }, [text]);
 
   const canSend = can("messages.send");
   const title = channel.type === "DM" ? (channel.dmUser?.displayName ?? "Direct message") : channel.name;
@@ -277,39 +283,58 @@ function ChatView({ channel, onEdit }: { channel: Channel; onEdit: () => void })
   );
 
   async function send() {
+    // A ref (not state) so a second Enter pressed before React re-renders is still blocked.
+    if (sending.current) return;
     const content = text.trim();
+
     if (editingId) {
       if (!content) return;
+      sending.current = true;
       try {
         await api.patch(`/messages/${editingId}`, { content });
         setEditingId(null);
         setText("");
       } catch (e) {
         toast(errMsg(e), "error");
+      } finally {
+        sending.current = false;
       }
       return;
     }
+
     if (!content && pending.length === 0) return;
+    if (uploading) return;
+    sending.current = true;
+
+    // Take what's in the composer and empty it straight away, so pressing Enter again has nothing to send.
+    const draft = { content, replyTo, attachments: pending };
+    setText("");
+    setPending([]);
+    setReplyTo(null);
+    stick.current = true;
     try {
-      stick.current = true;
       const m = await api.post<Message>(`/channels/${channel.id}/messages`, {
-        content,
-        replyToId: replyTo?.id ?? null,
-        attachmentIds: pending.map((p) => p.id),
+        content: draft.content,
+        replyToId: draft.replyTo?.id ?? null,
+        attachmentIds: draft.attachments.map((p) => p.id),
       });
       setMessages((prev) => (prev.some((p) => p.id === m.id) ? prev : [...prev, m]));
-      setText("");
-      setPending([]);
-      setReplyTo(null);
     } catch (e) {
       toast(errMsg(e), "error");
+      // Sending failed: put the draft back so nothing that was typed is lost.
+      setText((cur) => cur || draft.content);
+      setPending((cur) => (cur.length ? cur : draft.attachments));
+      setReplyTo((cur) => cur ?? draft.replyTo);
+    } finally {
+      sending.current = false;
     }
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      void send();
+      // Holding Enter fires repeated keydowns; only the first one sends.
+      if (!e.repeat) void send();
     } else if (e.key === "Escape") {
       setEditingId(null);
       setReplyTo(null);
