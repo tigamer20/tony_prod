@@ -86,6 +86,8 @@ export interface Message {
   content: string;
   deleted: boolean;
   pinned: boolean;
+  /** The author used @everyone and was allowed to, so it notified the channel. */
+  mentionsEveryone: boolean;
   editedAt: string | null;
   createdAt: string;
   attachments: Attachment[];
@@ -187,4 +189,18 @@ export interface DocTemplate {
   title: string;
   type: DocType;
   description: string;
+}
+
+/** A "someone mentioned you" entry on the dashboard. */
+export interface MentionItem {
+  id: string;
+  kind: "message" | "document";
+  /** Reached through @everyone rather than by name. */
+  everyone: boolean;
+  createdAt: string;
+  readAt: string | null;
+  by: MiniUser;
+  channel: { id: string; name: string; type: "TEXT" | "DM" } | null;
+  snippet: string | null;
+  document: { id: string; title: string } | null;
 }

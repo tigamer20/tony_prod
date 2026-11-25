@@ -14,6 +14,7 @@ import { authRouter } from "./routes/auth.js";
 import { chatRouter } from "./routes/chat.js";
 import { documentsRouter } from "./routes/documents.js";
 import { deleteAbandonedUploads, filesRouter } from "./routes/files.js";
+import { mentionsRouter } from "./routes/mentions.js";
 import { teamRouter } from "./routes/team.js";
 import { workRouter } from "./routes/work.js";
 
@@ -39,7 +40,7 @@ app.use(express.json({ limit: "5mb" }));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/auth", authRouter);
-app.use("/api", requireAuth, teamRouter, chatRouter, filesRouter, workRouter, documentsRouter);
+app.use("/api", requireAuth, teamRouter, chatRouter, filesRouter, workRouter, documentsRouter, mentionsRouter);
 app.use("/api", (_req, res) => void res.status(404).json({ error: "Not found." }));
 
 // In production the API also serves the built web app.

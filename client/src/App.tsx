@@ -43,7 +43,7 @@ export function App() {
 
 function Shell() {
   const { me, logout } = useAuth();
-  const { totalUnread, unreadAnnouncements } = useData();
+  const { totalUnread, unreadAnnouncements, unreadMentions } = useData();
   const [menu, setMenu] = useState(false);
   const [profile, setProfile] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -61,7 +61,7 @@ function Shell() {
   }, [totalUnread]);
 
   const items = [
-    { to: "/", icon: LayoutDashboard, label: "Home", end: true },
+    { to: "/", icon: LayoutDashboard, label: "Home", end: true, count: unreadMentions },
     { to: "/chat", icon: MessageSquare, label: "Chat", count: totalUnread },
     { to: "/calendar", icon: CalendarDays, label: "Calendar" },
     { to: "/productions", icon: Clapperboard, label: "Projects" },

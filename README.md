@@ -17,6 +17,8 @@ calendar, productions, tasks, announcements, and documents with import and expor
   reactions, edits, pins, file/image attachments up to 10 MB (drag & drop or paste), typing indicators, unread badges,
   online presence, message search. Messages arrive live over WebSockets. Individual messages, whole channels (managers)
   and direct messages (either person) can be deleted; on a phone, tap a message to reveal its actions.
+  Type `@` to mention someone (with autocomplete). Members with the "Mention everyone" permission (Producer and
+  Department Head by default) can use `@everyone` to notify everyone who can see the channel.
 - **Calendar** – month and agenda views, event types (shoot, meeting, scout, review, deadline, delivery), attendees
   with accept/decline, per-production filter, `.ics` export for Google/Apple/Outlook.
 - **Productions** – one per video: status pipeline, shoot date, shoot end date, target release date, location, team,
@@ -27,6 +29,9 @@ calendar, productions, tasks, announcements, and documents with import and expor
 - **Documents** – rich-text editor with tables, autosave, version history and restore, templates (call sheet,
   shot list, script, treatment, schedule, budget, meeting notes). **Import** `.docx`, `.md`, `.txt`.
   **Export** to Word (`.docx`), PDF, Markdown and plain text. Budget and contract documents are restricted by permission.
+  Type `@` in a document to mention a teammate who can open it.
+- **Mentions** – anyone mentioned in chat or in a document gets a live pop-up and an entry in the Mentions section
+  of their Home dashboard (with an unread badge). Opening the channel or clicking the entry marks it read.
 
 ## Roles & permissions
 

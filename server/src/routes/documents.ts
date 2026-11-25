@@ -5,14 +5,15 @@ import mammoth from "mammoth";
 import multer from "multer";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
-import { documentVisibilityWhere, SENSITIVE_DOC_TYPES } from "../access.js";
+import { documentAudience, documentVisibilityWhere, SENSITIVE_DOC_TYPES } from "../access.js";
 import { can, requirePerm } from "../auth.js";
 import { prisma } from "../db.js";
 import { badRequest, forbidden, HttpError, notFound, param, parse } from "../lib/http.js";
 import { toDocx, toMarkdown, toPdf, toPlainText } from "../lib/export.js";
+import { documentMentionIds } from "../lib/mentions.js";
 import { miniUserSelect } from "../lib/serialize.js";
 import { TEMPLATES, type PMNode } from "../lib/templates.js";
-import { emitAll } from "../realtime.js";
+import { emitAll, emitToUsers } from "../realtime.js";
 
 export const documentsRouter = Router();
 
@@ -192,8 +193,38 @@ documentsRouter.patch("/documents/:id", async (req, res) => {
     data: { ...rest, ...(content ? { content: asJson(content) } : {}), updatedById: user.id },
     select: detailSelect,
   });
+
+  // Notify people who were @mentioned in this save. Only mentions that are new since the last save count, so
+  // autosaving the same document over and over never pings anyone twice.
+  if (content) {
+    const before = new Set(documentMentionIds(existing.content));
+    const added = documentMentionIds(content).filter((id) => !before.has(id) && id !== user.id);
+    if (added.length) {
+      const allowed = new Set((await documentAudience({ type: updated.type, createdById: updated.createdBy.id })).map((u) => u.id));
+      const targets = added.filter((id) => allowed.has(id));
+      for (const userId of targets) {
+        await prisma.mention.upsert({
+          where: { userId_documentId: { userId, documentId: existing.id } },
+          create: { userId, byId: user.id, documentId: existing.id },
+          // Mentioned again after being removed: surface it as new.
+          update: { byId: user.id, readAt: null, createdAt: new Date() },
+        });
+      }
+      if (targets.length) {
+        emitToUsers(targets, "mention:new", { kind: "document", by: user.displayName, documentId: existing.id, where: `"${updated.title}"` });
+      }
+    }
+  }
+
   emitAll("documents:changed", { id: existing.id });
   res.json(updated);
+});
+
+/** Who can be @mentioned in this document (people who are allowed to open it), for the editor's autocomplete. */
+documentsRouter.get("/documents/:id/mentionable", async (req, res) => {
+  const doc = await loadVisible(req.user!, param(req, "id"));
+  const audience = await documentAudience({ type: doc.type, createdById: doc.createdBy.id });
+  res.json({ users: audience.filter((u) => u.id !== req.user!.id).sort((a, b) => a.displayName.localeCompare(b.displayName)) });
 });
 
 documentsRouter.delete("/documents/:id", async (req, res) => {

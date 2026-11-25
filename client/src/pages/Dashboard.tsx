@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { format } from "date-fns";
-import { CalendarDays, Clapperboard, ListChecks, Megaphone } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { format, formatDistanceToNow } from "date-fns";
+import { AtSign, CalendarDays, Check, Clapperboard, ListChecks, Megaphone } from "lucide-react";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useData, useSocketEvent } from "../data";
 import { EVENT_TYPES, PRIORITY_COLOR } from "../lib";
 import type { Announcement, CalEvent, Task } from "../types";
-import { Avatar, Badge, Empty, PageHeader, Spinner } from "../ui";
+import type { MentionItem } from "../types";
+import { Avatar, Badge, Button, Empty, PageHeader, Spinner } from "../ui";
 
 interface DashboardData {
   events: CalEvent[];
@@ -19,7 +20,19 @@ interface DashboardData {
 
 export function Dashboard() {
   const { me } = useAuth();
-  const { totalUnread } = useData();
+  const { totalUnread, mentions, unreadMentions, refreshMentions } = useData();
+  const navigate = useNavigate();
+
+  async function openMention(m: MentionItem) {
+    if (!m.readAt) await api.post(`/mentions/${m.id}/read`).catch(() => {});
+    refreshMentions();
+    navigate(m.kind === "document" ? `/documents/${m.document!.id}` : `/chat/${m.channel!.id}`);
+  }
+
+  async function markAllRead() {
+    await api.post("/mentions/read-all");
+    refreshMentions();
+  }
   const [data, setData] = useState<DashboardData | null>(null);
   const load = useCallback(() => void api.get<DashboardData>("/dashboard").then(setData), []);
   useEffect(load, [load]);
@@ -37,6 +50,9 @@ export function Dashboard() {
       <PageHeader title={`${greeting}, ${me!.displayName.split(" ")[0]}`} subtitle={format(new Date(), "EEEE, MMMM d")} />
 
       <div className="stat-row">
+        <a href="#mentions" className={`stat ${unreadMentions ? "stat-accent" : ""}`} style={{ textDecoration: "none", color: "inherit" }}>
+          <b>{unreadMentions}</b><span><AtSign size={13} /> Unread mentions</span>
+        </a>
         <Link to="/productions" className="stat" style={{ textDecoration: "none", color: "inherit" }}>
           <b>{data.activeProductions}</b><span><Clapperboard size={13} /> Active productions</span>
         </Link>
@@ -50,6 +66,45 @@ export function Dashboard() {
           <b>{totalUnread}</b><span>Unread chat messages</span>
         </Link>
       </div>
+
+      <section className="card" id="mentions" style={{ marginBottom: 16 }} aria-label="Mentions">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+          <h3 style={{ margin: 0 }}>Mentions</h3>
+          {unreadMentions > 0 && (
+            <Button small variant="ghost" onClick={markAllRead}>
+              <Check size={14} /> Mark all read
+            </Button>
+          )}
+        </div>
+        {mentions.length === 0 ? (
+          <Empty icon={<AtSign size={32} />} title="No mentions yet">When someone @mentions you in chat or in a document, it shows up here.</Empty>
+        ) : (
+          <div className="list">
+            {mentions.slice(0, 8).map((m) => (
+              <button key={m.id} className={`list-item mention-row ${m.readAt ? "read" : "unread"}`} onClick={() => void openMention(m)}>
+                <Avatar user={m.by} size={34} />
+                <div className="grow">
+                  <div>
+                    <b>{m.by.displayName}</b> mentioned {m.everyone ? "everyone" : "you"} in{" "}
+                    <b>
+                      {m.kind === "document"
+                        ? `"${m.document!.title}"`
+                        : m.channel!.type === "DM"
+                          ? "a direct message"
+                          : `#${m.channel!.name}`}
+                    </b>
+                  </div>
+                  {m.snippet && <div className="muted small ellipsis">{m.snippet}</div>}
+                </div>
+                <span className="muted small" style={{ whiteSpace: "nowrap" }} title={format(new Date(m.createdAt), "PPpp")}>
+                  {formatDistanceToNow(new Date(m.createdAt), { addSuffix: true })}
+                </span>
+                {!m.readAt && <span className="unread-dot" aria-label="Unread" />}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
 
       <div className="grid cols-2">
         <section className="card">

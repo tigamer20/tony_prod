@@ -29,6 +29,16 @@ import { Avatar, Button, Empty, Field, Modal, Spinner, useToast } from "../ui";
 const EMOJIS = ["👍", "❤️", "😂", "🎬", "🔥", "👀", "✅", "🙏", "🎉", "😮", "😢", "💯"];
 const INLINE_IMAGES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
+/** One line in the @ autocomplete: a person, or "@everyone". */
+interface SuggestOption {
+  key: string;
+  label: string;
+  sub: string;
+  /** What gets written after the @. */
+  insert: string;
+  user?: MiniUser;
+}
+
 // ─── Page: channel list + selected conversation ──────────────────────────
 
 export function ChatPage() {
@@ -164,6 +174,17 @@ function ChatView({ channel, onEdit }: { channel: Channel; onEdit: () => void })
   const [pins, setPins] = useState<Message[]>([]);
   const [searching, setSearching] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // @mention autocomplete: who can be mentioned here, and the "@query" currently being typed.
+  const [mentionable, setMentionable] = useState<{ users: MiniUser[]; canEveryone: boolean }>({ users: [], canEveryone: false });
+  const [suggest, setSuggest] = useState<{ start: number; query: string } | null>(null);
+  const [suggestIndex, setSuggestIndex] = useState(0);
+
+  useEffect(() => {
+    api
+      .get<{ users: MiniUser[]; canEveryone: boolean }>(`/channels/${channel.id}/mentionable`)
+      .then(setMentionable)
+      .catch(() => {});
+  }, [channel.id]);
 
   const listRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -330,7 +351,66 @@ function ChatView({ channel, onEdit }: { channel: Channel; onEdit: () => void })
     }
   }
 
+  const options = useMemo<SuggestOption[]>(() => {
+    if (!suggest) return [];
+    const q = suggest.query.toLowerCase();
+    const list: SuggestOption[] = [];
+    if (mentionable.canEveryone && "everyone".startsWith(q)) {
+      list.push({ key: "everyone", label: "@everyone", sub: "Notify everyone who can see this channel", insert: "everyone" });
+    }
+    const matches = mentionable.users.filter((u) => u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q));
+    // Names that start with what was typed come first.
+    matches.sort((a, b) => Number(b.username.toLowerCase().startsWith(q)) - Number(a.username.toLowerCase().startsWith(q)));
+    for (const u of matches) list.push({ key: u.id, label: u.displayName, sub: `@${u.username}`, insert: u.username, user: u });
+    return list.slice(0, 7);
+  }, [suggest, mentionable]);
+
+  /** Looks at the text before the cursor: is it in the middle of typing an @mention? */
+  function updateSuggest(value: string, caret: number | null) {
+    const before = value.slice(0, caret ?? value.length);
+    const m = /(^|\s)@([a-z0-9_.-]{0,24})$/i.exec(before);
+    if (!m) return setSuggest(null);
+    const next = { start: before.length - m[2]!.length - 1, query: m[2]! };
+    setSuggest((prev) => {
+      if (prev && prev.start === next.start && prev.query === next.query) return prev;
+      setSuggestIndex(0);
+      return next;
+    });
+  }
+
+  function pickSuggestion(option: SuggestOption) {
+    if (!suggest) return;
+    const el = textRef.current;
+    const caret = el?.selectionStart ?? text.length;
+    const inserted = `@${option.insert} `;
+    setText(text.slice(0, suggest.start) + inserted + text.slice(caret));
+    setSuggest(null);
+    const pos = suggest.start + inserted.length;
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(pos, pos);
+    });
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    // While the suggestion list is open, the arrow keys, Enter, Tab and Esc drive it instead of the message.
+    if (suggest && options.length > 0) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setSuggestIndex((i) => (i + (e.key === "ArrowDown" ? 1 : options.length - 1)) % options.length);
+        return;
+      }
+      if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey) {
+        e.preventDefault();
+        pickSuggestion(options[suggestIndex] ?? options[0]!);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSuggest(null);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       // Holding Enter fires repeated keydowns; only the first one sends.
@@ -525,6 +605,37 @@ function ChatView({ channel, onEdit }: { channel: Channel; onEdit: () => void })
                 </button>
               </div>
             )}
+            {suggest && options.length > 0 && (
+              <div className="suggest" role="listbox" aria-label="Mention suggestions">
+                <div className="suggest-head">Mention</div>
+                {options.map((o, i) => (
+                  <button
+                    key={o.key}
+                    type="button"
+                    role="option"
+                    aria-selected={i === suggestIndex}
+                    className={`suggest-item ${i === suggestIndex ? "active" : ""}`}
+                    // mousedown (not click) so the text box keeps focus and the cursor position.
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      pickSuggestion(o);
+                    }}
+                    onMouseEnter={() => setSuggestIndex(i)}
+                  >
+                    {o.user ? (
+                      <Avatar user={o.user} size={26} />
+                    ) : (
+                      <span className="avatar" style={{ width: 26, height: 26, background: "var(--yellow)", color: "#000" }}>
+                        <AtSign size={15} />
+                      </span>
+                    )}
+                    <span className="grow ellipsis">
+                      <b>{o.label}</b> <span className="muted">{o.sub}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="composer-box">
               <input ref={fileInput} type="file" multiple hidden onChange={(e) => { void upload([...(e.target.files ?? [])]); e.target.value = ""; }} />
               <button className="icon-btn" aria-label="Attach files" title="Attach files" disabled={uploading || !can("files.upload")} onClick={() => fileInput.current?.click()}>
@@ -537,9 +648,15 @@ function ChatView({ channel, onEdit }: { channel: Channel; onEdit: () => void })
                 placeholder={`Message ${channel.type === "DM" ? title : "#" + title}`}
                 onChange={(e) => {
                   onChange(e.target.value);
+                  updateSuggest(e.target.value, e.target.selectionStart);
                   e.target.style.height = "auto";
                   e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
                 }}
+                onClick={(e) => updateSuggest(e.currentTarget.value, e.currentTarget.selectionStart)}
+                onKeyUp={(e) => {
+                  if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) updateSuggest(e.currentTarget.value, e.currentTarget.selectionStart);
+                }}
+                onBlur={() => setSuggest(null)}
                 onKeyDown={onKeyDown}
                 onPaste={onPaste}
                 maxLength={4000}
@@ -580,7 +697,7 @@ function ChatView({ channel, onEdit }: { channel: Channel; onEdit: () => void })
           {pins.map((m) => (
             <div key={m.id} className="card" style={{ marginBottom: 8, padding: 10 }}>
               <div className="muted small">{m.author.displayName} · {formatMessageTime(m.createdAt)}</div>
-              <div className="msg-text">{renderContent(m.content, me!.username, usernames)}</div>
+              <div className="msg-text">{renderContent(m.content, me!.username, usernames, m.mentionsEveryone)}</div>
             </div>
           ))}
         </aside>
@@ -612,7 +729,8 @@ const MessageRow = memo(function MessageRow({ m, compact, meId, myUsername, user
   // On touch screens there is no hover, so tapping a message reveals its actions.
   const [selected, setSelected] = useState(false);
   const mine = m.author.id === meId;
-  const mentioned = !m.deleted && new RegExp(`@${myUsername}\\b`, "i").test(m.content);
+  // Highlight messages that name you, or that used @everyone (unless you wrote it).
+  const mentioned = !m.deleted && (new RegExp(`(?<![\\w@])@${myUsername}(?![\\w])`, "i").test(m.content) || (m.mentionsEveryone && !mine));
 
   return (
     <div
@@ -648,7 +766,7 @@ const MessageRow = memo(function MessageRow({ m, compact, meId, myUsername, user
           <>
             {m.content && (
               <div className="msg-text">
-                {renderContent(m.content, myUsername, usernames)}
+                {renderContent(m.content, myUsername, usernames, m.mentionsEveryone)}
                 {m.editedAt && <span className="edited"> (edited)</span>}
               </div>
             )}
@@ -724,9 +842,10 @@ const MessageRow = memo(function MessageRow({ m, compact, meId, myUsername, user
 
 // ─── Message text rendering (no raw HTML, ever) ──────────────────────────
 
-const INLINE = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|~~[^~\n]+~~|https?:\/\/[^\s<]+|@[a-z0-9_.-]{3,24})/gi;
+// The lookbehind keeps an email address like bob@leo.com from being read as a mention.
+const INLINE = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|~~[^~\n]+~~|https?:\/\/[^\s<]+|(?<![\w@])@[a-z0-9_.-]{3,24})/gi;
 
-function renderInline(text: string, myUsername: string, usernames: Map<string, MiniUser>, keyBase: string): ReactNode[] {
+function renderInline(text: string, myUsername: string, usernames: Map<string, MiniUser>, keyBase: string, everyone: boolean): ReactNode[] {
   return text.split(INLINE).map((part, i) => {
     const key = `${keyBase}-${i}`;
     if (!part) return null;
@@ -744,18 +863,38 @@ function renderInline(text: string, myUsername: string, usernames: Map<string, M
       );
     }
     if (part.startsWith("@")) {
-      const name = part.slice(1).toLowerCase();
+      // "@maya." at the end of a sentence still means maya.
+      let name = part.slice(1).toLowerCase();
+      let rest = "";
+      while (name.length >= 3 && name !== "everyone" && !usernames.has(name) && /[.\-_]$/.test(name)) {
+        rest = name.slice(-1) + rest;
+        name = name.slice(0, -1);
+      }
+      // @everyone only lights up when the server accepted it (the author was allowed to use it).
+      if (name === "everyone" && everyone) {
+        return (
+          <span key={key}>
+            <span className="mention all">@everyone</span>
+            {rest}
+          </span>
+        );
+      }
       if (usernames.has(name)) {
-        return <span key={key} className={`mention ${name === myUsername ? "me" : ""}`}>@{usernames.get(name)!.displayName}</span>;
+        return (
+          <span key={key}>
+            <span className={`mention ${name === myUsername ? "me" : ""}`}>@{usernames.get(name)!.displayName}</span>
+            {rest}
+          </span>
+        );
       }
     }
     return part;
   });
 }
 
-function renderContent(content: string, myUsername: string, usernames: Map<string, MiniUser>): ReactNode {
+function renderContent(content: string, myUsername: string, usernames: Map<string, MiniUser>, everyone = false): ReactNode {
   return content.split(/```/).map((chunk, i) =>
-    i % 2 === 1 ? <pre key={i}>{chunk.replace(/^\n/, "")}</pre> : <span key={i}>{renderInline(chunk, myUsername, usernames, String(i))}</span>,
+    i % 2 === 1 ? <pre key={i}>{chunk.replace(/^\n/, "")}</pre> : <span key={i}>{renderInline(chunk, myUsername, usernames, String(i), everyone)}</span>,
   );
 }
 

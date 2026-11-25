@@ -24,8 +24,13 @@ const hasMark = (n: PMNode, type: string) => n.marks?.find((m) => m.type === typ
 
 // ─── Plain text & Markdown ───────────────────────────────────────────────
 
+/** How an @mention reads in an export: "@Maya Chen". */
+const mentionText = (n: PMNode) => `@${String(n.attrs?.label ?? "")}`;
+
 export function inlineText(nodes: PMNode[] = []): string {
-  return nodes.map((n) => (n.type === "hardBreak" ? "\n" : (n.text ?? inlineText(n.content)))).join("");
+  return nodes
+    .map((n) => (n.type === "hardBreak" ? "\n" : n.type === "mention" ? mentionText(n) : (n.text ?? inlineText(n.content))))
+    .join("");
 }
 
 function blockText(node: PMNode): string {
@@ -56,6 +61,7 @@ function mdInline(nodes: PMNode[] = []): string {
   return nodes
     .map((n) => {
       if (n.type === "hardBreak") return "  \n";
+      if (n.type === "mention") return `**${mentionText(n)}**`;
       let t = n.text ?? "";
       if (!t) return mdInline(n.content);
       const link = hasMark(n, "link");
@@ -142,6 +148,10 @@ function docxRuns(nodes: PMNode[] = []): (TextRun | ExternalHyperlink)[] {
   for (const n of nodes) {
     if (n.type === "hardBreak") {
       out.push(new TextRun({ break: 1 }));
+      continue;
+    }
+    if (n.type === "mention") {
+      out.push(new TextRun({ text: mentionText(n), bold: true, color: "3B46C9" }));
       continue;
     }
     if (n.text === undefined) {
@@ -288,6 +298,7 @@ function pdfRuns(nodes: PMNode[] = []): Run[] {
   const out: Run[] = [];
   for (const n of nodes) {
     if (n.type === "hardBreak") out.push({ text: "\n", bold: false, italic: false, underline: false, strike: false, code: false });
+    else if (n.type === "mention") out.push({ text: mentionText(n), bold: true, italic: false, underline: false, strike: false, code: false });
     else if (n.text !== undefined) {
       const link = hasMark(n, "link");
       const href = link ? String((link as Mark).attrs?.href ?? "") : "";

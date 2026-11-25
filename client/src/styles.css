@@ -338,3 +338,26 @@ a.list-item:hover { background: #ffffff06; text-decoration: none; }
   .paper { box-shadow: none; padding: 0; }
   .doc-scroll { background: #fff; padding: 0; }
 }
+
+/* ── Mentions ────────────────────────────────────────────── */
+.stat-accent { border-color: var(--yellow); background: #f0b23214; }
+.mention-row { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--border); text-align: left; color: inherit; border-radius: 0; }
+.mention-row:last-child { border-bottom: 0; }
+.mention-row:hover { background: #ffffff08; }
+.mention-row.read { opacity: 0.6; }
+.unread-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--yellow); flex: none; }
+.mention.all { background: #f0b2324d; color: #ffe2a0; }
+.msg.mentioned .mention.me { background: #f0b2326b; }
+
+/* Autocomplete list shown while typing an @ */
+.composer { position: relative; }
+.suggest { position: absolute; left: 16px; bottom: calc(100% - 4px); z-index: 12; width: min(340px, calc(100% - 32px)); max-height: 280px; overflow-y: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 4px; box-shadow: 0 10px 30px #000a; }
+.suggest.floating { position: fixed; left: auto; bottom: auto; width: 320px; }
+.suggest-head { padding: 4px 8px 2px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-3); }
+.suggest-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0; border-radius: 5px; background: none; text-align: left; color: var(--text); }
+.suggest-item.active, .suggest-item:hover { background: var(--brand); }
+.suggest-item .muted { color: inherit; opacity: 0.7; font-size: 13px; }
+
+/* Mentions inside documents */
+.paper span.mention { background: #e3e6ff; color: #3b46c9; border-radius: 4px; padding: 0 4px; font-weight: 600; white-space: nowrap; }
+.paper span.mention.ProseMirror-selectednode { outline: 2px solid #5865f2; }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { format } from "date-fns";
 import { Placeholder } from "@tiptap/extensions";
@@ -33,7 +33,7 @@ import { useAuth } from "../auth";
 import { useData, useSocketEvent } from "../data";
 import { editorExtensions } from "../editorExtensions";
 import { DOC_TYPES } from "../lib";
-import type { DocDetail, DocType } from "../types";
+import type { DocDetail, DocType, MiniUser } from "../types";
 import { Avatar, Button, Empty, Modal, Spinner, useToast } from "../ui";
 
 type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
@@ -77,12 +77,80 @@ function Editor({ initial }: { initial: DocDetail }) {
   const latest = useRef({ title, type, productionId });
   latest.current = { title, type, productionId };
 
+  // @mention autocomplete: people who can open this document, and the "@query" being typed at the cursor.
+  const [mentionUsers, setMentionUsers] = useState<MiniUser[]>([]);
+  const [suggest, setSuggest] = useState<{ from: number; to: number; query: string; left: number; top: number; bottom: number } | null>(null);
+  const [suggestIndex, setSuggestIndex] = useState(0);
+  // The editor is created once, so its callbacks read the latest logic through refs.
+  const detectRef = useRef<(ed: TiptapEditor) => void>(() => {});
+  const keyRef = useRef<(e: KeyboardEvent) => boolean>(() => false);
+
   const editor = useEditor({
     extensions: [...editorExtensions, Placeholder.configure({ placeholder: "Start writing..." })],
     content: initial.content,
     editable: canEdit,
-    onUpdate: () => markDirty(),
+    onUpdate: ({ editor: ed }) => {
+      markDirty();
+      detectRef.current(ed);
+    },
+    onSelectionUpdate: ({ editor: ed }) => detectRef.current(ed),
+    editorProps: { handleKeyDown: (_view, event) => keyRef.current(event) },
   });
+
+  useEffect(() => {
+    if (!canEdit) return;
+    api.get<{ users: MiniUser[] }>(`/documents/${initial.id}/mentionable`).then((r) => setMentionUsers(r.users)).catch(() => {});
+  }, [canEdit, initial.id]);
+
+  const options = useMemo(() => {
+    if (!suggest) return [];
+    const q = suggest.query.toLowerCase();
+    const matches = mentionUsers.filter((u) => u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q));
+    matches.sort((a, b) => Number(b.username.toLowerCase().startsWith(q)) - Number(a.username.toLowerCase().startsWith(q)));
+    return matches.slice(0, 7);
+  }, [suggest?.query, mentionUsers]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  detectRef.current = (ed) => {
+    const { $from, empty } = ed.state.selection;
+    if (!canEdit || !empty) return setSuggest(null);
+    // Text before the cursor in this paragraph; ￼ stands in for inline items such as an earlier mention.
+    const before = $from.parent.textBetween(0, $from.parentOffset, undefined, "￼");
+    const m = /(^|[\s￼])@([^\s@]{0,24})$/.exec(before);
+    if (!m) return setSuggest(null);
+    const to = $from.pos;
+    const coords = ed.view.coordsAtPos(to);
+    setSuggest((prev) => {
+      if (!prev || prev.query !== m[2]) setSuggestIndex(0);
+      return { from: to - m[2]!.length - 1, to, query: m[2]!, left: coords.left, top: coords.top, bottom: coords.bottom };
+    });
+  };
+
+  keyRef.current = (event) => {
+    if (!suggest || options.length === 0) return false;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      setSuggestIndex((i) => (i + (event.key === "ArrowDown" ? 1 : options.length - 1)) % options.length);
+      return true;
+    }
+    if (event.key === "Enter" || event.key === "Tab") {
+      pickMention(options[suggestIndex] ?? options[0]!);
+      return true;
+    }
+    if (event.key === "Escape") {
+      setSuggest(null);
+      return true;
+    }
+    return false;
+  };
+
+  function pickMention(user: MiniUser) {
+    if (!suggest || !editor) return;
+    editor
+      .chain()
+      .focus()
+      .insertContentAt({ from: suggest.from, to: suggest.to }, [{ type: "mention", attrs: { id: user.id, label: user.displayName } }, { type: "text", text: " " }])
+      .run();
+    setSuggest(null);
+  }
 
   const save = useCallback(async () => {
     if (!editor || saving.current || !dirtyRef.current) return;
@@ -232,6 +300,40 @@ function Editor({ initial }: { initial: DocDetail }) {
           <EditorContent editor={editor} />
         </div>
       </div>
+
+      {suggest && options.length > 0 && (
+        <div
+          className="suggest floating"
+          role="listbox"
+          aria-label="Mention suggestions"
+          style={{
+            left: Math.max(8, Math.min(suggest.left, window.innerWidth - 336)),
+            ...(window.innerHeight - suggest.bottom < 280 ? { bottom: window.innerHeight - suggest.top + 6 } : { top: suggest.bottom + 6 }),
+          }}
+        >
+          <div className="suggest-head">Mention someone</div>
+          {options.map((u, i) => (
+            <button
+              key={u.id}
+              type="button"
+              role="option"
+              aria-selected={i === suggestIndex}
+              className={`suggest-item ${i === suggestIndex ? "active" : ""}`}
+              // mousedown (not click) so the editor keeps focus and the cursor position.
+              onMouseDown={(e) => {
+                e.preventDefault();
+                pickMention(u);
+              }}
+              onMouseEnter={() => setSuggestIndex(i)}
+            >
+              <Avatar user={u} size={26} />
+              <span className="grow ellipsis">
+                <b>{u.displayName}</b> <span className="muted">@{u.username}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {showVersions && (
         <VersionsModal

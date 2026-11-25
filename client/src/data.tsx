@@ -3,7 +3,7 @@ import { io, type Socket } from "socket.io-client";
 import { api } from "./api";
 import { useAuth } from "./auth";
 import { AvatarVersions, useToast } from "./ui";
-import type { Announcement, Channel, Member, Message, Production, Role } from "./types";
+import type { Announcement, Channel, Member, MentionItem, Message, Production, Role } from "./types";
 
 interface DataState {
   users: Member[];
@@ -13,6 +13,8 @@ interface DataState {
   channels: Channel[];
   productions: Production[];
   unreadAnnouncements: number;
+  mentions: MentionItem[];
+  unreadMentions: number;
   totalUnread: number;
   socket: Socket | null;
   setActiveChannel: (id: string | null) => void;
@@ -20,6 +22,7 @@ interface DataState {
   refreshUsers: () => Promise<void>;
   refreshProductions: () => Promise<void>;
   refreshAnnouncements: () => Promise<void>;
+  refreshMentions: () => Promise<void>;
   markChannelRead: (id: string) => void;
 }
 
@@ -48,6 +51,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [productions, setProductions] = useState<Production[]>([]);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
+  const [mentions, setMentions] = useState<{ items: MentionItem[]; unread: number }>({ items: [], unread: 0 });
   const [socket, setSocket] = useState<Socket | null>(null);
   const activeChannel = useRef<string | null>(null);
 
@@ -77,6 +81,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setUnreadAnnouncements(list.filter((a) => !a.read).length);
   }, []);
 
+  const refreshMentions = useCallback(async () => {
+    setMentions(await api.get<{ items: MentionItem[]; unread: number }>("/mentions"));
+  }, []);
+
   // Initial load + socket lifecycle, tied to the signed-in user.
   useEffect(() => {
     if (!me) {
@@ -87,6 +95,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     refreshChannels();
     refreshProductions();
     refreshAnnouncements();
+    refreshMentions();
     const s = io({ withCredentials: true });
     setSocket(s);
     return () => void s.disconnect();
@@ -121,6 +130,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         refreshAnnouncements();
         if (a.authorId !== me?.id) toast(`${a.priority === "URGENT" ? "Urgent: " : ""}${a.title}`, "info", `New announcement from ${a.author}`);
       },
+      "mentions:changed": () => void refreshMentions(),
+      "mention:new": (n: { kind: "message" | "document"; by: string; where: string; everyone?: boolean; channelId?: string }) => {
+        refreshMentions();
+        // No pop-up if you're already looking at the conversation it happened in.
+        if (n.kind === "message" && n.channelId === activeChannel.current) return;
+        toast(`${n.by} mentioned ${n.everyone ? "everyone" : "you"} in ${n.where}`, "info", "New mention");
+      },
       notify: (n: { text: string }) => toast(n.text, "info"),
       "message:new": (m: Message) => {
         if (m.author.id === me?.id || m.channelId === activeChannel.current) return;
@@ -131,7 +147,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return () => {
       for (const [ev, fn] of Object.entries(handlers)) socket.off(ev, fn as never);
     };
-  }, [socket, me?.id, refreshChannels, refreshUsers, refreshProductions, refreshAnnouncements, toast]);
+  }, [socket, me?.id, refreshChannels, refreshUsers, refreshProductions, refreshAnnouncements, refreshMentions, toast]);
 
   const value = useMemo<DataState>(
     () => ({
@@ -142,6 +158,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       channels,
       productions,
       unreadAnnouncements,
+      mentions: mentions.items,
+      unreadMentions: mentions.unread,
       totalUnread: channels.reduce((n, c) => n + c.unread, 0),
       socket,
       setActiveChannel: (id) => {
@@ -151,12 +169,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       refreshUsers,
       refreshProductions,
       refreshAnnouncements,
+      refreshMentions,
       markChannelRead: (id) => {
         setChannels((prev) => prev.map((c) => (c.id === id ? { ...c, unread: 0 } : c)));
         api.post(`/channels/${id}/read`).catch(() => {});
       },
     }),
-    [users, roles, online, channels, productions, unreadAnnouncements, socket, refreshChannels, refreshUsers, refreshProductions, refreshAnnouncements],
+    [users, roles, online, channels, productions, unreadAnnouncements, mentions, socket, refreshChannels, refreshUsers, refreshProductions, refreshAnnouncements, refreshMentions],
   );
 
   const avatarVersions = useMemo(() => new Map(users.map((u) => [u.id, u.avatarUpdatedAt ?? null])), [users]);

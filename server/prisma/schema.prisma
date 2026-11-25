@@ -60,6 +60,8 @@ model User {
   documentsUpdated    Document[]           @relation("DocumentUpdater")
   documentVersions    DocumentVersion[]
   invitesCreated      Invite[]
+  mentionsReceived    Mention[]            @relation("MentionTarget")
+  mentionsMade        Mention[]            @relation("MentionAuthor")
 }
 
 model Role {
@@ -113,6 +115,7 @@ model Channel {
   allowedRoles Role[]          @relation("ChannelRoles")
   members      ChannelMember[]
   messages     Message[]
+  mentions     Mention[]
 }
 
 model ChannelMember {
@@ -136,12 +139,15 @@ model Message {
   replyTo   Message?  @relation("Replies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies   Message[] @relation("Replies")
   pinned    Boolean   @default(false)
+  /// True when the author used @everyone and was allowed to (so it notified the channel).
+  mentionsEveryone Boolean @default(false)
   editedAt  DateTime?
   deletedAt DateTime?
   createdAt DateTime  @default(now())
 
   attachments Attachment[]
   reactions   Reaction[]
+  mentions    Mention[]
 
   @@index([channelId, createdAt])
 }
@@ -360,6 +366,7 @@ model Document {
   updatedAt    DateTime     @updatedAt
 
   versions DocumentVersion[]
+  mentions Mention[]
 }
 
 model DocumentVersion {
@@ -371,4 +378,34 @@ model DocumentVersion {
   createdById String
   createdBy   User     @relation(fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
+}
+
+// ─── Mentions ────────────────────────────────────────────────────────────
+
+/// "Someone mentioned you": one row per person per chat message or document, shown on the dashboard.
+model Mention {
+  id         String    @id @default(cuid())
+  /// Who was mentioned.
+  userId     String
+  user       User      @relation("MentionTarget", fields: [userId], references: [id], onDelete: Cascade)
+  /// Who wrote the mention.
+  byId       String
+  by         User      @relation("MentionAuthor", fields: [byId], references: [id], onDelete: Cascade)
+  /// Chat mentions point at a message (and its channel, so reading the channel clears them) ...
+  messageId  String?
+  message    Message?  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  channelId  String?
+  channel    Channel?  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  /// ... document mentions point at the document.
+  documentId String?
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  /// True when the person was reached through @everyone rather than by name.
+  everyone   Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  readAt     DateTime?
+
+  @@unique([userId, messageId])
+  @@unique([userId, documentId])
+  @@index([userId, readAt, createdAt])
+  @@index([channelId])
 }

@@ -13,6 +13,7 @@ export const PERMISSION_CATALOG: PermissionInfo[] = [
   { key: "channels.manage", label: "Manage channels", description: "Create, edit and delete chat channels.", group: "Chat" },
   { key: "messages.send", label: "Send messages", description: "Post messages and reactions in channels they can see.", group: "Chat" },
   { key: "messages.moderate", label: "Moderate messages", description: "Delete or pin anyone's messages.", group: "Chat" },
+  { key: "mentions.everyone", label: "Mention everyone", description: "Use @everyone in chat to notify everyone who can see the channel.", group: "Chat" },
   { key: "files.upload", label: "Upload files", description: "Attach files to chat messages.", group: "Chat" },
   { key: "productions.create", label: "Create productions", description: "Start new productions/projects.", group: "Productions" },
   { key: "productions.manage", label: "Manage productions", description: "Edit any production, its team and see budgets.", group: "Productions" },
@@ -46,7 +47,7 @@ export const DEFAULT_ROLES: DefaultRole[] = [
     position: 60,
     permissions: [
       "messages.send", "files.upload", "tasks.manage", "events.manage", "announcements.post",
-      "documents.create", "documents.edit", "channels.manage",
+      "documents.create", "documents.edit", "channels.manage", "mentions.everyone",
     ],
   },
   {

@@ -1,10 +1,11 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
-import { canAccessChannel, visibleChannelWhere } from "../access.js";
+import { canAccessChannel, channelAudience, visibleChannelWhere } from "../access.js";
 import { can, requirePerm } from "../auth.js";
 import { prisma } from "../db.js";
 import { badRequest, forbidden, notFound, param, parse, slugify } from "../lib/http.js";
+import { chatMentions } from "../lib/mentions.js";
 import { miniUserSelect } from "../lib/serialize.js";
 import { emitAll, emitToChannel, emitToUsers, joinUsersToChannel } from "../realtime.js";
 
@@ -36,6 +37,7 @@ export function shapeMessage(m: NonNullable<MessageRow>) {
     content: deleted ? "" : m.content,
     deleted,
     pinned: m.pinned && !deleted,
+    mentionsEveryone: m.mentionsEveryone && !deleted,
     editedAt: m.editedAt,
     createdAt: m.createdAt,
     attachments: deleted ? [] : m.attachments,
@@ -200,7 +202,24 @@ chatRouter.post("/channels/:id/read", async (req, res) => {
     create: { channelId: channel.id, userId: req.user!.id },
     update: { lastReadAt: new Date() },
   });
+  // Opening a conversation counts as seeing the mentions in it.
+  const cleared = await prisma.mention.updateMany({
+    where: { userId: req.user!.id, channelId: channel.id, readAt: null },
+    data: { readAt: new Date() },
+  });
+  if (cleared.count) emitToUsers([req.user!.id], "mentions:changed", {});
   res.json({ ok: true });
+});
+
+/** Who can be @mentioned in this channel (for the autocomplete), and whether @everyone is allowed. */
+chatRouter.get("/channels/:id/mentionable", async (req, res) => {
+  const channel = await canAccessChannel(req.user!, param(req, "id"));
+  if (!channel) throw notFound("Channel not found.");
+  const audience = await channelAudience(channel.id);
+  res.json({
+    users: audience.filter((u) => u.id !== req.user!.id).sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    canEveryone: can(req.user!, "mentions.everyone") && channel.type !== "DM",
+  });
 });
 
 // ─── Messages ────────────────────────────────────────────────────────────
@@ -266,12 +285,22 @@ chatRouter.post("/channels/:id/messages", requirePerm("messages.send"), sendLimi
     if (!target) throw badRequest("The message you're replying to no longer exists.");
   }
 
+  // Work out who this message mentions: people named directly and, with permission, everyone who can see the channel.
+  const mentions = chatMentions(content, await channelAudience(channel.id), user.id, can(user, "mentions.everyone") && channel.type !== "DM");
+
   const created = await prisma.message.create({
     data: {
       channelId: channel.id,
       authorId: user.id,
       content,
       replyToId: body.replyToId ?? null,
+      mentionsEveryone: mentions.everyone,
+      mentions: {
+        create: [
+          ...mentions.named.map((userId) => ({ userId, byId: user.id, channelId: channel.id, everyone: false })),
+          ...mentions.everyoneIds.map((userId) => ({ userId, byId: user.id, channelId: channel.id, everyone: true })),
+        ],
+      },
     },
   });
 
@@ -289,8 +318,21 @@ chatRouter.post("/channels/:id/messages", requirePerm("messages.send"), sendLimi
 
   const shaped = shapeMessage(await loadMessage(created.id));
   emitToChannel(channel.id, "message:new", shaped);
+  notifyMentioned([...mentions.named, ...mentions.everyoneIds], user.displayName, channel, mentions.everyone);
   res.status(201).json(shaped);
 });
+
+/** Tells each mentioned person live, so their dashboard and notifications update straight away. */
+function notifyMentioned(userIds: string[], byName: string, channel: { id: string; name: string; type: string }, everyone: boolean) {
+  if (userIds.length === 0) return;
+  emitToUsers(userIds, "mention:new", {
+    kind: "message",
+    by: byName,
+    channelId: channel.id,
+    where: channel.type === "DM" ? "a direct message" : `#${channel.name}`,
+    everyone,
+  });
+}
 
 async function accessibleMessage(req: { user?: import("../auth.js").AuthUser }, id: string) {
   const msg = await prisma.message.findUnique({ where: { id } });
@@ -310,7 +352,27 @@ chatRouter.patch("/messages/:id", async (req, res) => {
   if (msg.authorId !== req.user!.id) throw forbidden("You can only edit your own messages.");
   if (msg.deletedAt) throw badRequest("That message was deleted.");
   const { content } = parse(z.object({ content: z.string().trim().min(1).max(4000) }), req.body);
-  await prisma.message.update({ where: { id: msg.id }, data: { content, editedAt: new Date() } });
+
+  // Editing can add new mentions; people who were already mentioned aren't notified a second time.
+  const channel = await prisma.channel.findUniqueOrThrow({ where: { id: msg.channelId }, select: { id: true, name: true, type: true } });
+  const found = chatMentions(content, await channelAudience(channel.id), req.user!.id, can(req.user!, "mentions.everyone") && channel.type !== "DM");
+  const already = new Set((await prisma.mention.findMany({ where: { messageId: msg.id }, select: { userId: true } })).map((m) => m.userId));
+  const fresh = [
+    ...found.named.map((userId) => ({ userId, everyone: false })),
+    ...found.everyoneIds.map((userId) => ({ userId, everyone: true })),
+  ].filter((m) => !already.has(m.userId));
+
+  await prisma.$transaction([
+    prisma.message.update({
+      where: { id: msg.id },
+      data: { content, editedAt: new Date(), mentionsEveryone: msg.mentionsEveryone || found.everyone },
+    }),
+    prisma.mention.createMany({
+      data: fresh.map((m) => ({ userId: m.userId, byId: req.user!.id, messageId: msg.id, channelId: msg.channelId, everyone: m.everyone })),
+      skipDuplicates: true,
+    }),
+  ]);
+  notifyMentioned(fresh.map((m) => m.userId), req.user!.displayName, channel, found.everyone);
   res.json(await broadcastUpdate(msg.id));
 });
 
