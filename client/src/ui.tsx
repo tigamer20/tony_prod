@@ -75,6 +75,22 @@ export function Avatar({
   );
 }
 
+/** Everyone taking part in a production, as name chips with their photo and job title. */
+export function Participants({ members }: { members: { userId: string; jobTitle: string | null; user: MiniUser }[] }) {
+  if (members.length === 0) return <span className="muted small">No participants yet</span>;
+  return (
+    <div className="chips participants">
+      {members.map((m) => (
+        <span key={m.userId} className="chip" title={m.jobTitle ?? undefined}>
+          <Avatar user={m.user} size={22} />
+          {m.user.displayName}
+          {m.jobTitle && <span className="muted small">· {m.jobTitle}</span>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function Badge({ color, children }: { color?: string; children: ReactNode }) {
   return (
     <span className="badge" style={color ? { background: `${color}26`, color, borderColor: `${color}55` } : undefined}>

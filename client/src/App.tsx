@@ -7,6 +7,8 @@ import {
   LayoutDashboard,
   ListChecks,
   LogOut,
+  Ellipsis,
+  type LucideIcon,
   Megaphone,
   MessageSquare,
   Play,
@@ -45,10 +47,14 @@ function Shell() {
   const { me, logout } = useAuth();
   const { totalUnread, unreadAnnouncements, unreadMentions } = useData();
   const [menu, setMenu] = useState(false);
+  const [more, setMore] = useState(false);
   const [profile, setProfile] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const flush = pathname.startsWith("/chat") || /^\/documents\/[^/]+/.test(pathname);
+
+  // The phone's "More" sheet closes whenever you move to another page.
+  useEffect(() => setMore(false), [pathname]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => menuRef.current && !menuRef.current.contains(e.target as Node) && setMenu(false);
@@ -60,16 +66,17 @@ function Shell() {
     document.title = totalUnread ? `(${totalUnread}) Tony Prod` : "Tony Prod";
   }, [totalUnread]);
 
-  const items = [
+  const items: { to: string; icon: LucideIcon; label: string; end?: boolean; count?: number; secondary?: boolean }[] = [
     { to: "/", icon: LayoutDashboard, label: "Home", end: true, count: unreadMentions },
     { to: "/chat", icon: MessageSquare, label: "Chat", count: totalUnread },
     { to: "/calendar", icon: CalendarDays, label: "Calendar" },
     { to: "/productions", icon: Clapperboard, label: "Projects" },
     { to: "/tasks", icon: ListChecks, label: "Tasks" },
-    { to: "/announcements", icon: Megaphone, label: "News", count: unreadAnnouncements },
-    { to: "/documents", icon: FileText, label: "Docs" },
-    { to: "/team", icon: Users, label: "Team" },
+    { to: "/announcements", icon: Megaphone, label: "News", count: unreadAnnouncements, secondary: true },
+    { to: "/documents", icon: FileText, label: "Docs", secondary: true },
+    { to: "/team", icon: Users, label: "Team", secondary: true },
   ];
+  const moreCount = items.filter((i) => i.secondary).reduce((sum, i) => sum + (i.count ?? 0), 0);
 
   return (
     <div className="app">
@@ -77,13 +84,18 @@ function Shell() {
         <div className="nav-logo" aria-hidden>
           <Play size={22} fill="currentColor" />
         </div>
-        {items.map(({ to, icon: Icon, label, end, count }) => (
-          <NavLink key={to} to={to} end={end} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
+        {items.map(({ to, icon: Icon, label, end, count, secondary }) => (
+          <NavLink key={to} to={to} end={end} className={({ isActive }) => `nav-item ${secondary ? "secondary" : ""} ${isActive ? "active" : ""}`}>
             <Icon size={22} />
             {label}
             {!!count && <span className="nav-count">{count > 99 ? "99+" : count}</span>}
           </NavLink>
         ))}
+        <button className={`nav-item nav-more ${more || items.some((i) => i.secondary && (i.end ? pathname === i.to : pathname.startsWith(i.to))) ? "active" : ""}`} onClick={() => setMore((m) => !m)} aria-expanded={more} aria-label="More">
+          <Ellipsis size={22} />
+          More
+          {moreCount > 0 && <span className="nav-count">{moreCount > 99 ? "99+" : moreCount}</span>}
+        </button>
         <div className="nav-spacer" />
         <div className="menu" ref={menuRef}>
           <button className="me-btn" onClick={() => setMenu((m) => !m)} aria-label="Account menu" aria-expanded={menu}>
@@ -106,6 +118,34 @@ function Shell() {
           )}
         </div>
       </nav>
+      {more && (
+        <>
+          <div className="sheet-backdrop" onClick={() => setMore(false)} />
+          <div className="sheet" role="dialog" aria-label="More">
+            <div className="sheet-user">
+              <Avatar user={me!} size={40} />
+              <div>
+                <b>{me!.displayName}</b>
+                <div className="muted small">@{me!.username}</div>
+              </div>
+            </div>
+            {items.filter((i) => i.secondary).map(({ to, icon: Icon, label, count }) => (
+              <NavLink key={to} to={to} className="sheet-item">
+                <Icon size={20} />
+                <span className="grow">{label}</span>
+                {!!count && <span className="nav-count static">{count > 99 ? "99+" : count}</span>}
+              </NavLink>
+            ))}
+            <div className="sep" />
+            <button className="sheet-item" onClick={() => { setMore(false); setProfile(true); }}>
+              <UserCog size={20} /> Profile & password
+            </button>
+            <button className="sheet-item" onClick={() => void logout()}>
+              <LogOut size={20} /> Sign out
+            </button>
+          </div>
+        </>
+      )}
       <main className={`content ${flush ? "flush" : ""}`}>
         <Routes>
           <Route path="/" element={<Dashboard />} />

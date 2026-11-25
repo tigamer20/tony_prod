@@ -7,7 +7,6 @@ import { Button, Field } from "../ui";
 /** Shown instead of the app when an admin created the account (or reset the password) and the member hasn't chosen their own yet. */
 export function ForcePassword() {
   const { me, refresh, logout } = useAuth();
-  const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
@@ -19,7 +18,7 @@ export function ForcePassword() {
     if (next !== confirm) return setError("The two new passwords don't match.");
     setBusy(true);
     try {
-      await api.post("/auth/password", { currentPassword: current, newPassword: next });
+      await api.post("/auth/password", { newPassword: next });
       await refresh();
     } catch (err) {
       setError(errMsg(err));
@@ -37,16 +36,13 @@ export function ForcePassword() {
           <h1>Choose your password</h1>
         </div>
         <p className="muted" style={{ marginBottom: 20 }}>
-          Welcome, {me!.displayName}! Your account was set up with a temporary password. Pick a new one that only you know before continuing.
+          Welcome, {me!.displayName}! You signed in with a temporary password. Pick a new one that only you know before continuing.
         </p>
 
         {error && <div className="error-text" role="alert">{error}</div>}
 
-        <Field label="Temporary password">
-          <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required autoFocus />
-        </Field>
         <Field label="New password" hint="At least 8 characters.">
-          <input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" minLength={8} required />
+          <input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" minLength={8} required autoFocus />
         </Field>
         <Field label="Repeat new password">
           <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" minLength={8} required />

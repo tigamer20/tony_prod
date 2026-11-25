@@ -68,7 +68,7 @@ function Members() {
         )}
       </div>
       <div className="card scroll-x" style={{ padding: 0 }}>
-        <table className="table">
+        <table className="table stack">
           <thead>
             <tr><th>Member</th><th>Roles</th>{manager && <th>Contact</th>}{manager && <th>Status</th>}{manager && <th>Last login</th>}<th /></tr>
           </thead>
@@ -85,9 +85,9 @@ function Members() {
                   </div>
                 </td>
                 <td><div className="chips">{u.roles.map((r) => <RoleChip key={r.id} role={r} />)}</div></td>
-                {manager && <td className="small">{u.email ?? <span className="muted">No email</span>}{u.phone && <div className="muted">{u.phone}</div>}</td>}
+                {manager && <td className="small" data-label="Contact">{u.email ?? <span className="muted">No email</span>}{u.phone && <div className="muted">{u.phone}</div>}</td>}
                 {manager && (
-                  <td>
+                  <td data-label="Status">
                     {u.status === "DISABLED" ? (
                       <Badge color="#ed4245">Disabled</Badge>
                     ) : u.lastLoginAt ? (
@@ -100,7 +100,7 @@ function Members() {
                   </td>
                 )}
                 {manager && (
-                  <td className="small" style={{ whiteSpace: "nowrap" }}>
+                  <td className="small" data-label="Last login" style={{ whiteSpace: "nowrap" }}>
                     {u.lastLoginAt ? (
                       <span title={format(new Date(u.lastLoginAt), "PPpp")}>{formatDistanceToNow(new Date(u.lastLoginAt), { addSuffix: true })}</span>
                     ) : (
@@ -108,7 +108,7 @@ function Members() {
                     )}
                   </td>
                 )}
-                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                <td className="row-actions" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                   {u.id !== me!.id && u.status !== "DISABLED" && can("messages.send") && (
                     <Button small variant="ghost" onClick={() => dm(u)} aria-label={`Message ${u.displayName}`}><MessageSquare size={14} /> Message</Button>
                   )}

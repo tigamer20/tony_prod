@@ -43,6 +43,15 @@ export const STATUS_LABEL: Record<string, string> = {
   ARCHIVED: "Archived",
 };
 
+export const STATUS_COLOR: Record<string, string> = {
+  DEVELOPMENT: "#99aab5",
+  PRE_PRODUCTION: "#f0b232",
+  PRODUCTION: "#ed4245",
+  POST_PRODUCTION: "#5865f2",
+  DELIVERED: "#3ba55d",
+  ARCHIVED: "#80848e",
+};
+
 export const EVENT_TYPES: Record<string, { label: string; color: string }> = {
   SHOOT: { label: "Shoot", color: "#ed4245" },
   MEETING: { label: "Meeting", color: "#5865f2" },

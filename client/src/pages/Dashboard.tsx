@@ -5,10 +5,10 @@ import { AtSign, CalendarDays, Check, Clapperboard, ListChecks, Megaphone } from
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useData, useSocketEvent } from "../data";
-import { EVENT_TYPES, PRIORITY_COLOR } from "../lib";
+import { EVENT_TYPES, PRIORITY_COLOR, STATUS_COLOR, STATUS_LABEL } from "../lib";
 import type { Announcement, CalEvent, Task } from "../types";
 import type { MentionItem } from "../types";
-import { Avatar, Badge, Button, Empty, PageHeader, Spinner } from "../ui";
+import { Avatar, Badge, Button, Empty, PageHeader, Participants, Spinner } from "../ui";
 
 interface DashboardData {
   events: CalEvent[];
@@ -20,7 +20,8 @@ interface DashboardData {
 
 export function Dashboard() {
   const { me } = useAuth();
-  const { totalUnread, mentions, unreadMentions, refreshMentions } = useData();
+  const { totalUnread, mentions, unreadMentions, refreshMentions, productions } = useData();
+  const running = productions.filter((p) => p.status !== "DELIVERED" && p.status !== "ARCHIVED");
   const navigate = useNavigate();
 
   async function openMention(m: MentionItem) {
@@ -77,7 +78,9 @@ export function Dashboard() {
           )}
         </div>
         {mentions.length === 0 ? (
-          <Empty icon={<AtSign size={32} />} title="No mentions yet">When someone @mentions you in chat or in a document, it shows up here.</Empty>
+          <p className="muted small" style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0 2px" }}>
+            <AtSign size={16} style={{ flex: "none" }} /> No mentions yet. When someone @mentions you in chat or in a document, it shows up here.
+          </p>
         ) : (
           <div className="list">
             {mentions.slice(0, 8).map((m) => (
@@ -101,6 +104,32 @@ export function Dashboard() {
                 </span>
                 {!m.readAt && <span className="unread-dot" aria-label="Unread" />}
               </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="card" style={{ marginBottom: 16 }} aria-label="Productions in progress">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+          <h3 style={{ margin: 0 }}>Productions in progress</h3>
+          <Link to="/productions" className="muted small">All productions</Link>
+        </div>
+        {running.length === 0 ? (
+          <Empty icon={<Clapperboard size={32} />} title="Nothing in progress">Productions that aren't delivered or archived show up here with their participants.</Empty>
+        ) : (
+          <div className="list">
+            {running.map((p) => (
+              <div key={p.id} className="list-item" style={{ alignItems: "flex-start" }}>
+                <i className="dot" style={{ background: p.color, marginTop: 7 }} />
+                <div className="grow">
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
+                    <Link to={`/productions/${p.id}`}><b>{p.title}</b></Link>
+                    <Badge color={STATUS_COLOR[p.status]}>{STATUS_LABEL[p.status]}</Badge>
+                    <span className="muted small">Release: {p.releaseDate ? format(new Date(p.releaseDate), "MMM d, yyyy") : "TBD"}</span>
+                  </div>
+                  <Participants members={p.members} />
+                </div>
+              </div>
             ))}
           </div>
         )}

@@ -164,17 +164,23 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
 });
 
 const passwordSchema = z.object({
-  currentPassword: z.string().min(1),
+  // Left out on the first sign-in: the member just typed the temporary password to get in.
+  currentPassword: z.string().min(1).optional(),
   newPassword: z.string().min(8, "New password must be at least 8 characters.").max(200),
 });
 
 authRouter.post("/password", requireAuth, limiter, async (req, res) => {
   const body = parse(passwordSchema, req.body);
   const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.id } });
-  if (!(await bcrypt.compare(body.currentPassword, user.passwordHash))) {
-    throw new HttpError(400, "Your current password is incorrect.");
+  if (user.mustChangePassword) {
+    // First sign-in (or after a reset): they've already proven the temporary password by signing in, so don't ask again.
+    if (await bcrypt.compare(body.newPassword, user.passwordHash)) throw new HttpError(400, "Choose a password different from the temporary one.");
+  } else {
+    if (!body.currentPassword || !(await bcrypt.compare(body.currentPassword, user.passwordHash))) {
+      throw new HttpError(400, "Your current password is incorrect.");
+    }
+    if (body.currentPassword === body.newPassword) throw new HttpError(400, "Your new password must be different from the current one.");
   }
-  if (body.currentPassword === body.newPassword) throw new HttpError(400, "Your new password must be different from the current one.");
   await prisma.user.update({
     where: { id: user.id },
     data: {

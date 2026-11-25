@@ -5,9 +5,9 @@ import { ArrowLeft, Clapperboard, FileText, MessageSquare, Plus, Trash2, UserPlu
 import { api, errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useData, useSocketEvent } from "../data";
-import { DOC_TYPES, EVENT_TYPES, STATUS_LABEL, fromDateInput, money, toDateInput } from "../lib";
+import { DOC_TYPES, EVENT_TYPES, STATUS_COLOR, STATUS_LABEL, fromDateInput, money, toDateInput } from "../lib";
 import type { CalEvent, DocListItem, Production, ProductionStatus } from "../types";
-import { Avatar, Badge, Button, Empty, Field, MemberPicker, Modal, PageHeader, Spinner, useToast } from "../ui";
+import { Avatar, Badge, Button, Empty, Field, MemberPicker, Modal, PageHeader, Participants, Spinner, useToast } from "../ui";
 import { TaskBoard } from "./Tasks";
 
 /** A date that hasn't been decided yet is stored as empty and shown as "TBD". */
@@ -18,15 +18,6 @@ function shootLabel(p: Production) {
   if (p.shootDate && p.shootEndDate && isSameDay(new Date(p.shootDate), new Date(p.shootEndDate))) return dateOrTbd(p.shootDate, "MMM d");
   return `${dateOrTbd(p.shootDate, "MMM d")} to ${dateOrTbd(p.shootEndDate, "MMM d")}`;
 }
-
-const STATUS_COLOR: Record<ProductionStatus, string> = {
-  DEVELOPMENT: "#99aab5",
-  PRE_PRODUCTION: "#f0b232",
-  PRODUCTION: "#ed4245",
-  POST_PRODUCTION: "#5865f2",
-  DELIVERED: "#3ba55d",
-  ARCHIVED: "#80848e",
-};
 
 export function ProductionsPage() {
   const { can } = useAuth();
@@ -169,6 +160,11 @@ export function ProductionDetail() {
           </>
         }
       />
+
+      <section className="participants-bar" aria-label="Participants">
+        <h4>Participants ({p.members.length})</h4>
+        <Participants members={p.members} />
+      </section>
 
       <div className="tabs">
         {([["overview", "Overview"], ["tasks", `Tasks (${p._count.tasks})`], ["schedule", `Schedule (${events.length})`], ["documents", `Documents (${docs.length})`]] as const).map(([k, label]) => (

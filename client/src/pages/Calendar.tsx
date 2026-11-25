@@ -25,7 +25,7 @@ export function CalendarPage() {
   const { can } = useAuth();
   const { productions } = useData();
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
-  const [view, setView] = useState<"month" | "agenda">("month");
+  const [view, setView] = useState<"month" | "agenda">(() => (window.matchMedia("(max-width: 820px)").matches ? "agenda" : "month"));
   const [productionId, setProductionId] = useState("");
   const [events, setEvents] = useState<CalEvent[] | null>(null);
   const [editing, setEditing] = useState<{ event: CalEvent | null; day?: Date } | null>(null);
@@ -102,6 +102,11 @@ export function CalendarPage() {
                 role="gridcell"
               >
                 <div className="cal-day">{format(day, "d")}</div>
+                {list.length > 0 && (
+                  <div className="cal-dots" aria-hidden>
+                    {list.slice(0, 4).map((e) => <i key={e.id} style={{ background: EVENT_TYPES[e.type]!.color }} />)}
+                  </div>
+                )}
                 {list.slice(0, 3).map((e) => (
                   <button
                     key={e.id}
