@@ -127,7 +127,7 @@ export function Dashboard() {
                     <Badge color={STATUS_COLOR[p.status]}>{STATUS_LABEL[p.status]}</Badge>
                     <span className="muted small">Release: {p.releaseDate ? format(new Date(p.releaseDate), "MMM d, yyyy") : "TBD"}</span>
                   </div>
-                  <Participants members={p.members} />
+                  <Participants members={p.members} guests={p.guests} />
                 </div>
               </div>
             ))}

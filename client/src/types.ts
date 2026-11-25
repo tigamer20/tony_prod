@@ -97,6 +97,12 @@ export interface Message {
 
 export type ProductionStatus = "DEVELOPMENT" | "PRE_PRODUCTION" | "PRODUCTION" | "POST_PRODUCTION" | "DELIVERED" | "ARCHIVED";
 
+export interface ProductionGuest {
+  id: string;
+  name: string;
+  jobTitle: string | null;
+}
+
 export interface Production {
   id: string;
   title: string;
@@ -113,6 +119,8 @@ export interface Production {
   releaseDate: string | null;
   createdById: string;
   members: { userId: string; jobTitle: string | null; user: MiniUser }[];
+  /** People who take part without an account. */
+  guests: ProductionGuest[];
   channels: { id: string; name: string }[];
   _count: { tasks: number; documents: number; events: number };
 }

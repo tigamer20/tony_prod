@@ -74,6 +74,7 @@ export function ProductionsPage() {
               <div className="chips" style={{ margin: "10px 0" }}>
                 {p.members.slice(0, 6).map((m) => <Avatar key={m.userId} user={m.user} size={26} />)}
                 {p.members.length > 6 && <span className="muted small">+{p.members.length - 6}</span>}
+                {p.guests.length > 0 && <span className="muted small">+{p.guests.length} guest{p.guests.length === 1 ? "" : "s"}</span>}
               </div>
               <div className="muted small">{p._count.tasks} tasks · {p._count.events} events · {p._count.documents} documents</div>
             </Link>
@@ -95,6 +96,8 @@ export function ProductionDetail() {
   const [tab, setTab] = useState<"overview" | "tasks" | "schedule" | "documents">("overview");
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [guestName, setGuestName] = useState("");
+  const [guestTitle, setGuestTitle] = useState("");
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [docs, setDocs] = useState<DocListItem[]>([]);
   const [missing, setMissing] = useState(false);
@@ -124,6 +127,27 @@ export function ProductionDetail() {
       await load();
     } catch (e) {
       toast(errMsg(e), "error");
+    }
+  }
+
+  async function addGuest(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await api.post(`/productions/${production!.id}/guests`, { name: guestName, jobTitle: guestTitle || null });
+      setGuestName("");
+      setGuestTitle("");
+      await load();
+    } catch (err) {
+      toast(errMsg(err), "error");
+    }
+  }
+
+  async function removeGuest(id: string) {
+    try {
+      await api.del(`/productions/${production!.id}/guests/${id}`);
+      await load();
+    } catch (err) {
+      toast(errMsg(err), "error");
     }
   }
 
@@ -162,8 +186,8 @@ export function ProductionDetail() {
       />
 
       <section className="participants-bar" aria-label="Participants">
-        <h4>Participants ({p.members.length})</h4>
-        <Participants members={p.members} />
+        <h4>Participants ({p.members.length + p.guests.length})</h4>
+        <Participants members={p.members} guests={p.guests} />
       </section>
 
       <div className="tabs">
@@ -187,7 +211,7 @@ export function ProductionDetail() {
           </section>
           <section className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <h3 style={{ margin: 0 }}>Team ({p.members.length})</h3>
+              <h3 style={{ margin: 0 }}>Team ({p.members.length + p.guests.length})</h3>
               {canEdit && <Button small onClick={() => setAdding(true)}><UserPlus size={14} /> Add</Button>}
             </div>
             <div className="list">
@@ -199,6 +223,16 @@ export function ProductionDetail() {
                     <div className="muted small">{m.jobTitle ?? users.find((u) => u.id === m.userId)?.jobTitle ?? ""}</div>
                   </div>
                   {canEdit && <button className="icon-btn" aria-label={`Remove ${m.user.displayName}`} onClick={() => removeMember(m.userId)}><Trash2 size={15} /></button>}
+                </div>
+              ))}
+              {p.guests.map((g) => (
+                <div key={g.id} className="list-item">
+                  <Avatar user={{ displayName: g.name, avatarColor: "#6d6f78" }} size={32} />
+                  <div className="grow">
+                    <div>{g.name} <Badge>No account</Badge></div>
+                    <div className="muted small">{g.jobTitle ?? ""}</div>
+                  </div>
+                  {canEdit && <button className="icon-btn" aria-label={`Remove ${g.name}`} onClick={() => removeGuest(g.id)}><Trash2 size={15} /></button>}
                 </div>
               ))}
             </div>
@@ -242,7 +276,17 @@ export function ProductionDetail() {
 
       {editing && <ProductionModal production={p} onClose={() => setEditing(false)} onSaved={load} />}
       {adding && (
-        <Modal title="Add team members" onClose={() => setAdding(false)}>
+        <Modal title="Add participants" onClose={() => setAdding(false)}>
+          <form onSubmit={addGuest} className="guest-form">
+            <h4>Someone without an account</h4>
+            <p className="muted small">For people who take part but don't use the site: guests, actors, clients. They show in the list but can't sign in or be notified.</p>
+            <div className="row">
+              <Field label="Name"><input type="text" value={guestName} onChange={(e) => setGuestName(e.target.value)} maxLength={80} required /></Field>
+              <Field label="Role (optional)"><input type="text" value={guestTitle} onChange={(e) => setGuestTitle(e.target.value)} maxLength={80} placeholder="e.g. Guest, Actor" /></Field>
+            </div>
+            <Button variant="primary" type="submit" disabled={!guestName.trim()}><Plus size={16} /> Add person</Button>
+          </form>
+          <h4 style={{ margin: "18px 0 4px" }}>Team members with an account</h4>
           <div className="list">
             {users
               .filter((u) => u.status !== "DISABLED" && !p.members.some((m) => m.userId === u.id))

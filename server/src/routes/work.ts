@@ -37,6 +37,7 @@ const productionPatchSchema = productionFields.partial().refine(shootEndsAfterSt
 
 const productionInclude = {
   members: { include: { user: { select: miniUserSelect } } },
+  guests: { orderBy: { createdAt: "asc" as const }, select: { id: true, name: true, jobTitle: true } },
   channels: { select: { id: true, name: true } },
   _count: { select: { tasks: true, documents: true, events: true } },
 } as const;
@@ -124,6 +125,44 @@ workRouter.post("/productions/:id/members", async (req, res) => {
 workRouter.delete("/productions/:id/members/:userId", async (req, res) => {
   const existing = await assertCanEditProduction(req.user!, param(req, "id"));
   await prisma.productionMember.deleteMany({ where: { productionId: existing.id, userId: param(req, "userId") } });
+  emitAll("productions:changed", {});
+  res.json({ ok: true });
+});
+
+// People who take part without an account: shown in the participant list, but they can't sign in or be notified.
+const guestSchema = z.object({
+  name: z.string().trim().min(1, "Enter a name.").max(80),
+  jobTitle: z.string().trim().max(80).nullable().optional(),
+});
+
+workRouter.post("/productions/:id/guests", async (req, res) => {
+  const existing = await assertCanEditProduction(req.user!, param(req, "id"));
+  const body = parse(guestSchema, req.body);
+  const dupe = await prisma.productionGuest.findFirst({ where: { productionId: existing.id, name: { equals: body.name, mode: "insensitive" } } });
+  if (dupe) throw badRequest("That person is already on the list.");
+  const guest = await prisma.productionGuest.create({
+    data: { productionId: existing.id, name: body.name, jobTitle: body.jobTitle || null },
+    select: { id: true, name: true, jobTitle: true },
+  });
+  emitAll("productions:changed", {});
+  res.status(201).json(guest);
+});
+
+workRouter.patch("/productions/:id/guests/:guestId", async (req, res) => {
+  const existing = await assertCanEditProduction(req.user!, param(req, "id"));
+  const body = parse(guestSchema, req.body);
+  const result = await prisma.productionGuest.updateMany({
+    where: { id: param(req, "guestId"), productionId: existing.id },
+    data: { name: body.name, jobTitle: body.jobTitle || null },
+  });
+  if (result.count === 0) throw notFound("Participant not found.");
+  emitAll("productions:changed", {});
+  res.json({ ok: true });
+});
+
+workRouter.delete("/productions/:id/guests/:guestId", async (req, res) => {
+  const existing = await assertCanEditProduction(req.user!, param(req, "id"));
+  await prisma.productionGuest.deleteMany({ where: { id: param(req, "guestId"), productionId: existing.id } });
   emitAll("productions:changed", {});
   res.json({ ok: true });
 });
