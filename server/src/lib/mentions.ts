@@ -21,7 +21,7 @@ function resolveHandle(handle: string, byUsername: Map<string, MentionableUser>)
 }
 
 export interface ChatMentions {
-  /** People named directly (never the author, never someone who can't see the channel). */
+  /** People named directly, the author included (mentioning yourself is a handy reminder), but never someone who can't see the channel. */
   named: string[];
   /** People reached only through @everyone. */
   everyoneIds: string[];
@@ -37,7 +37,7 @@ export function chatMentions(content: string, audience: MentionableUser[], autho
   for (const handle of extractHandles(content)) {
     const hit = resolveHandle(handle, byUsername);
     if (hit === "everyone") everyone = canEveryone || everyone;
-    else if (hit && hit.id !== authorId) named.add(hit.id);
+    else if (hit) named.add(hit.id);
   }
   const everyoneIds = everyone ? audience.filter((u) => u.id !== authorId && !named.has(u.id)).map((u) => u.id) : [];
   return { named: [...named], everyoneIds, everyone };

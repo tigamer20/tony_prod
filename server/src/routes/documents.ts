@@ -198,7 +198,7 @@ documentsRouter.patch("/documents/:id", async (req, res) => {
   // autosaving the same document over and over never pings anyone twice.
   if (content) {
     const before = new Set(documentMentionIds(existing.content));
-    const added = documentMentionIds(content).filter((id) => !before.has(id) && id !== user.id);
+    const added = documentMentionIds(content).filter((id) => !before.has(id));
     if (added.length) {
       const allowed = new Set((await documentAudience({ type: updated.type, createdById: updated.createdBy.id })).map((u) => u.id));
       const targets = added.filter((id) => allowed.has(id));
@@ -224,7 +224,7 @@ documentsRouter.patch("/documents/:id", async (req, res) => {
 documentsRouter.get("/documents/:id/mentionable", async (req, res) => {
   const doc = await loadVisible(req.user!, param(req, "id"));
   const audience = await documentAudience({ type: doc.type, createdById: doc.createdBy.id });
-  res.json({ users: audience.filter((u) => u.id !== req.user!.id).sort((a, b) => a.displayName.localeCompare(b.displayName)) });
+  res.json({ users: audience.sort((a, b) => a.displayName.localeCompare(b.displayName)) });
 });
 
 documentsRouter.delete("/documents/:id", async (req, res) => {

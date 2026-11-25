@@ -217,7 +217,7 @@ chatRouter.get("/channels/:id/mentionable", async (req, res) => {
   if (!channel) throw notFound("Channel not found.");
   const audience = await channelAudience(channel.id);
   res.json({
-    users: audience.filter((u) => u.id !== req.user!.id).sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    users: audience.sort((a, b) => a.displayName.localeCompare(b.displayName)),
     canEveryone: can(req.user!, "mentions.everyone") && channel.type !== "DM",
   });
 });
