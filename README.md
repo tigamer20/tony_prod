@@ -23,9 +23,10 @@ calendar, productions, tasks, announcements, and documents with import and expor
   with accept/decline, per-production filter, `.ics` export for Google/Apple/Outlook.
 - **Productions** – one per video: status pipeline, shoot date, shoot end date, target release date, location, team,
   budget (hidden from people without access), and an
-  auto-created chat channel per production. Every project page lists its participants, and so does the Home
-  dashboard. Besides team members you can add people who have no account (guests, actors, clients) by name;
-  they appear in the list but can't sign in or be notified.
+  auto-created chat channel per production. Every project page lists its participants, the people who appear
+  in the video (in front of the camera), and so does the Home dashboard. Participants are separate from the crew
+  (the team members working on the production) and can be people with an account or just a name (a guest, an
+  actor, a client); those without an account can't sign in or be notified.
 - **Tasks** – drag-and-drop board (To do / In progress / In review / Done) with priorities, due dates and assignees.
 - **Announcements** – priorities, pinning, read receipts, live toast notifications.
 - **Documents** – rich-text editor with tables, autosave, version history and restore, templates (call sheet,

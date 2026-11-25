@@ -72,9 +72,9 @@ export function ProductionsPage() {
                 </div>
               </div>
               <div className="chips" style={{ margin: "10px 0" }}>
-                {p.members.slice(0, 6).map((m) => <Avatar key={m.userId} user={m.user} size={26} />)}
-                {p.members.length > 6 && <span className="muted small">+{p.members.length - 6}</span>}
-                {p.guests.length > 0 && <span className="muted small">+{p.guests.length} guest{p.guests.length === 1 ? "" : "s"}</span>}
+                {p.participants.slice(0, 6).map((x) => <Avatar key={x.id} user={x.user ?? { displayName: x.name, avatarColor: "#6d6f78" }} size={26} />)}
+                {p.participants.length > 6 && <span className="muted small">+{p.participants.length - 6}</span>}
+                {p.participants.length === 0 && <span className="muted small">No participants yet</span>}
               </div>
               <div className="muted small">{p._count.tasks} tasks · {p._count.events} events · {p._count.documents} documents</div>
             </Link>
@@ -96,8 +96,7 @@ export function ProductionDetail() {
   const [tab, setTab] = useState<"overview" | "tasks" | "schedule" | "documents">("overview");
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [guestName, setGuestName] = useState("");
-  const [guestTitle, setGuestTitle] = useState("");
+  const [managingParticipants, setManagingParticipants] = useState(false);
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [docs, setDocs] = useState<DocListItem[]>([]);
   const [missing, setMissing] = useState(false);
@@ -127,27 +126,6 @@ export function ProductionDetail() {
       await load();
     } catch (e) {
       toast(errMsg(e), "error");
-    }
-  }
-
-  async function addGuest(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      await api.post(`/productions/${production!.id}/guests`, { name: guestName, jobTitle: guestTitle || null });
-      setGuestName("");
-      setGuestTitle("");
-      await load();
-    } catch (err) {
-      toast(errMsg(err), "error");
-    }
-  }
-
-  async function removeGuest(id: string) {
-    try {
-      await api.del(`/productions/${production!.id}/guests/${id}`);
-      await load();
-    } catch (err) {
-      toast(errMsg(err), "error");
     }
   }
 
@@ -186,8 +164,11 @@ export function ProductionDetail() {
       />
 
       <section className="participants-bar" aria-label="Participants">
-        <h4>Participants ({p.members.length + p.guests.length})</h4>
-        <Participants members={p.members} guests={p.guests} />
+        <div className="participants-head">
+          <h4>Participants ({p.participants.length}) <span>in the video</span></h4>
+          {canEdit && <Button small variant="ghost" onClick={() => setManagingParticipants(true)}><UserPlus size={14} /> Manage</Button>}
+        </div>
+        <Participants participants={p.participants} />
       </section>
 
       <div className="tabs">
@@ -211,7 +192,7 @@ export function ProductionDetail() {
           </section>
           <section className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <h3 style={{ margin: 0 }}>Team ({p.members.length + p.guests.length})</h3>
+              <h3 style={{ margin: 0 }}>Crew ({p.members.length})</h3>
               {canEdit && <Button small onClick={() => setAdding(true)}><UserPlus size={14} /> Add</Button>}
             </div>
             <div className="list">
@@ -223,16 +204,6 @@ export function ProductionDetail() {
                     <div className="muted small">{m.jobTitle ?? users.find((u) => u.id === m.userId)?.jobTitle ?? ""}</div>
                   </div>
                   {canEdit && <button className="icon-btn" aria-label={`Remove ${m.user.displayName}`} onClick={() => removeMember(m.userId)}><Trash2 size={15} /></button>}
-                </div>
-              ))}
-              {p.guests.map((g) => (
-                <div key={g.id} className="list-item">
-                  <Avatar user={{ displayName: g.name, avatarColor: "#6d6f78" }} size={32} />
-                  <div className="grow">
-                    <div>{g.name} <Badge>No account</Badge></div>
-                    <div className="muted small">{g.jobTitle ?? ""}</div>
-                  </div>
-                  {canEdit && <button className="icon-btn" aria-label={`Remove ${g.name}`} onClick={() => removeGuest(g.id)}><Trash2 size={15} /></button>}
                 </div>
               ))}
             </div>
@@ -275,18 +246,9 @@ export function ProductionDetail() {
         ))}
 
       {editing && <ProductionModal production={p} onClose={() => setEditing(false)} onSaved={load} />}
+      {managingParticipants && <ParticipantsModal production={p} onChanged={load} onClose={() => setManagingParticipants(false)} />}
       {adding && (
-        <Modal title="Add participants" onClose={() => setAdding(false)}>
-          <form onSubmit={addGuest} className="guest-form">
-            <h4>Someone without an account</h4>
-            <p className="muted small">For people who take part but don't use the site: guests, actors, clients. They show in the list but can't sign in or be notified.</p>
-            <div className="row">
-              <Field label="Name"><input type="text" value={guestName} onChange={(e) => setGuestName(e.target.value)} maxLength={80} required /></Field>
-              <Field label="Role (optional)"><input type="text" value={guestTitle} onChange={(e) => setGuestTitle(e.target.value)} maxLength={80} placeholder="e.g. Guest, Actor" /></Field>
-            </div>
-            <Button variant="primary" type="submit" disabled={!guestName.trim()}><Plus size={16} /> Add person</Button>
-          </form>
-          <h4 style={{ margin: "18px 0 4px" }}>Team members with an account</h4>
+        <Modal title="Add crew members" onClose={() => setAdding(false)}>
           <div className="list">
             {users
               .filter((u) => u.status !== "DISABLED" && !p.members.some((m) => m.userId === u.id))
@@ -313,6 +275,86 @@ export function ProductionDetail() {
         </Modal>
       )}
     </>
+  );
+}
+
+/** Add and remove the people who appear in the video: people with an account, or just a name. */
+function ParticipantsModal({ production, onChanged, onClose }: { production: Production; onChanged: () => Promise<void> | void; onClose: () => void }) {
+  const { users } = useData();
+  const toast = useToast();
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("");
+
+  async function add(body: { userId?: string; name?: string }) {
+    try {
+      await api.post(`/productions/${production.id}/participants`, { ...body, role: role.trim() || null });
+      setName("");
+      await onChanged();
+    } catch (e) {
+      toast(errMsg(e), "error");
+    }
+  }
+
+  async function remove(id: string) {
+    try {
+      await api.del(`/productions/${production.id}/participants/${id}`);
+      await onChanged();
+    } catch (e) {
+      toast(errMsg(e), "error");
+    }
+  }
+
+  const linked = new Set(production.participants.map((x) => x.user?.id).filter(Boolean));
+  const available = users.filter((u) => u.status !== "DISABLED" && !linked.has(u.id));
+
+  return (
+    <Modal title="Participants in the video" onClose={onClose}>
+      <p className="muted small" style={{ marginBottom: 12 }}>The people who appear on camera. They can have an account or not, and they are separate from the crew.</p>
+
+      <div className="list" style={{ marginBottom: 14 }}>
+        {production.participants.length === 0 && <div className="muted small">No one added yet.</div>}
+        {production.participants.map((x) => (
+          <div key={x.id} className="list-item">
+            <Avatar user={x.user ?? { displayName: x.name, avatarColor: "#6d6f78" }} size={32} />
+            <div className="grow">
+              <div>{x.user?.displayName ?? x.name}{!x.user && <> <Badge>No account</Badge></>}</div>
+              <div className="muted small">{x.role ?? ""}</div>
+            </div>
+            <button className="icon-btn" aria-label={`Remove ${x.name}`} onClick={() => remove(x.id)}><Trash2 size={15} /></button>
+          </div>
+        ))}
+      </div>
+
+      <form
+        className="guest-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) void add({ name: name.trim() });
+        }}
+      >
+        <h4>Add someone</h4>
+        <div className="row">
+          <Field label="Name"><input type="text" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="Someone without an account" /></Field>
+          <Field label="Role in the video (optional)"><input type="text" value={role} onChange={(e) => setRole(e.target.value)} maxLength={80} placeholder="e.g. Host, Guest" /></Field>
+        </div>
+        <Button variant="primary" type="submit" disabled={!name.trim()}><Plus size={16} /> Add by name</Button>
+      </form>
+
+      {available.length > 0 && (
+        <>
+          <h4 style={{ margin: "18px 0 4px" }}>Or pick someone with an account</h4>
+          <div className="list">
+            {available.map((u) => (
+              <button key={u.id} className="list-item" style={{ background: "none", border: 0, textAlign: "left", color: "inherit" }} onClick={() => void add({ userId: u.id })}>
+                <Avatar user={u} size={32} />
+                <div className="grow">{u.displayName}<div className="muted small">{u.jobTitle ?? `@${u.username}`}</div></div>
+                <Plus size={16} />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
 

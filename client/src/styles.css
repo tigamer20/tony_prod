@@ -505,3 +505,7 @@ a.stat:hover { border-color: var(--text-3); background: var(--bg-3); text-decora
 .chip.guest { border-style: dashed; }
 .guest-form h4 { margin: 0 0 4px; }
 .guest-form p { margin-bottom: 10px; }
+
+.participants-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.participants-head h4 { margin: 0; }
+.participants-head h4 span { text-transform: none; letter-spacing: 0; font-weight: 500; opacity: .8; }

@@ -75,29 +75,16 @@ export function Avatar({
   );
 }
 
-/** Everyone taking part in a production, as name chips with their photo and job title. */
-export function Participants({
-  members,
-  guests = [],
-}: {
-  members: { userId: string; jobTitle: string | null; user: MiniUser }[];
-  guests?: { id: string; name: string; jobTitle: string | null }[];
-}) {
-  if (members.length === 0 && guests.length === 0) return <span className="muted small">No participants yet</span>;
+/** The people who appear in the video, as name chips with their photo (or initials) and role. */
+export function Participants({ participants }: { participants: { id: string; name: string; role: string | null; user: MiniUser | null }[] }) {
+  if (participants.length === 0) return <span className="muted small">No one added yet</span>;
   return (
     <div className="chips participants">
-      {members.map((m) => (
-        <span key={m.userId} className="chip" title={m.jobTitle ?? undefined}>
-          <Avatar user={m.user} size={22} />
-          {m.user.displayName}
-          {m.jobTitle && <span className="muted small">· {m.jobTitle}</span>}
-        </span>
-      ))}
-      {guests.map((g) => (
-        <span key={g.id} className="chip guest" title="No account on the site">
-          <Avatar user={{ displayName: g.name, avatarColor: "#6d6f78" }} size={22} />
-          {g.name}
-          {g.jobTitle && <span className="muted small">· {g.jobTitle}</span>}
+      {participants.map((p) => (
+        <span key={p.id} className={`chip ${p.user ? "" : "guest"}`} title={p.user ? undefined : "No account on the site"}>
+          <Avatar user={p.user ?? { displayName: p.name, avatarColor: "#6d6f78" }} size={22} />
+          {p.user?.displayName ?? p.name}
+          {p.role && <span className="muted small">· {p.role}</span>}
         </span>
       ))}
     </div>

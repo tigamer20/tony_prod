@@ -97,10 +97,12 @@ export interface Message {
 
 export type ProductionStatus = "DEVELOPMENT" | "PRE_PRODUCTION" | "PRODUCTION" | "POST_PRODUCTION" | "DELIVERED" | "ARCHIVED";
 
-export interface ProductionGuest {
+/** Someone who appears in the video. May be linked to an account, or just a name. */
+export interface ProductionParticipant {
   id: string;
   name: string;
-  jobTitle: string | null;
+  role: string | null;
+  user: MiniUser | null;
 }
 
 export interface Production {
@@ -119,8 +121,8 @@ export interface Production {
   releaseDate: string | null;
   createdById: string;
   members: { userId: string; jobTitle: string | null; user: MiniUser }[];
-  /** People who take part without an account. */
-  guests: ProductionGuest[];
+  /** The people in the video (in front of the camera), as opposed to the crew in `members`. */
+  participants: ProductionParticipant[];
   channels: { id: string; name: string }[];
   _count: { tasks: number; documents: number; events: number };
 }

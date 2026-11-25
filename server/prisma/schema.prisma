@@ -15,53 +15,54 @@ enum UserStatus {
 }
 
 model User {
-  id           String     @id @default(cuid())
+  id                 String     @id @default(cuid())
   /// Optional: accounts can be created by an admin with just a username.
-  email        String?    @unique
-  username     String     @unique
-  displayName  String
-  passwordHash String
-  avatarColor  String     @default("#5865f2")
-  jobTitle     String?
-  phone        String?
-  bio          String?
+  email              String?    @unique
+  username           String     @unique
+  displayName        String
+  passwordHash       String
+  avatarColor        String     @default("#5865f2")
+  jobTitle           String?
+  phone              String?
+  bio                String?
   /// Profile photo, stored in the database (resized by the browser before upload).
-  avatar          Bytes?
-  avatarType      String?
-  avatarUpdatedAt DateTime?
+  avatar             Bytes?
+  avatarType         String?
+  avatarUpdatedAt    DateTime?
   /// Set when an admin creates the account or resets the password; the member must choose their own.
-  mustChangePassword Boolean   @default(false)
+  mustChangePassword Boolean    @default(false)
   /// Sessions issued before this moment are rejected (set on password changes and resets).
   sessionsValidFrom  DateTime?
-  status       UserStatus @default(ACTIVE)
-  isOwner      Boolean    @default(false)
+  status             UserStatus @default(ACTIVE)
+  isOwner            Boolean    @default(false)
   /// The "Deleted user" placeholder that a removed member's messages and work are credited to.
   /// Not a real person: it is disabled, has no usable password, and is never listed.
-  isSystem     Boolean    @default(false)
-  createdAt    DateTime   @default(now())
-  lastSeenAt   DateTime?
+  isSystem           Boolean    @default(false)
+  createdAt          DateTime   @default(now())
+  lastSeenAt         DateTime?
   /// Most recent sign-in. Empty means the member has never signed in ("Pending").
-  lastLoginAt  DateTime?
+  lastLoginAt        DateTime?
 
-  roles               Role[]               @relation("UserRoles")
-  messages            Message[]
-  reactions           Reaction[]
-  channelMembers      ChannelMember[]
-  uploads             Attachment[]
-  productionsMember   ProductionMember[]
-  productionsCreated  Production[]         @relation("ProductionCreator")
-  tasksAssigned       Task[]               @relation("TaskAssignee")
-  tasksCreated        Task[]               @relation("TaskCreator")
-  eventsCreated       Event[]              @relation("EventCreator")
-  eventAttendance     EventAttendee[]
-  announcements       Announcement[]
-  announcementReads   AnnouncementRead[]
-  documentsCreated    Document[]           @relation("DocumentCreator")
-  documentsUpdated    Document[]           @relation("DocumentUpdater")
-  documentVersions    DocumentVersion[]
-  invitesCreated      Invite[]
-  mentionsReceived    Mention[]            @relation("MentionTarget")
-  mentionsMade        Mention[]            @relation("MentionAuthor")
+  roles              Role[]                  @relation("UserRoles")
+  messages           Message[]
+  reactions          Reaction[]
+  channelMembers     ChannelMember[]
+  uploads            Attachment[]
+  productionsMember  ProductionMember[]
+  productionsCreated Production[]            @relation("ProductionCreator")
+  tasksAssigned      Task[]                  @relation("TaskAssignee")
+  tasksCreated       Task[]                  @relation("TaskCreator")
+  eventsCreated      Event[]                 @relation("EventCreator")
+  eventAttendance    EventAttendee[]
+  announcements      Announcement[]
+  announcementReads  AnnouncementRead[]
+  documentsCreated   Document[]              @relation("DocumentCreator")
+  documentsUpdated   Document[]              @relation("DocumentUpdater")
+  documentVersions   DocumentVersion[]
+  invitesCreated     Invite[]
+  mentionsReceived   Mention[]               @relation("MentionTarget")
+  mentionsMade       Mention[]               @relation("MentionAuthor")
+  participations     ProductionParticipant[] @relation("ParticipantAccount")
 }
 
 model Role {
@@ -129,21 +130,21 @@ model ChannelMember {
 }
 
 model Message {
-  id        String    @id @default(cuid())
-  channelId String
-  channel   Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  authorId  String
-  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  content   String
-  replyToId String?
-  replyTo   Message?  @relation("Replies", fields: [replyToId], references: [id], onDelete: SetNull)
-  replies   Message[] @relation("Replies")
-  pinned    Boolean   @default(false)
+  id               String    @id @default(cuid())
+  channelId        String
+  channel          Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  authorId         String
+  author           User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content          String
+  replyToId        String?
+  replyTo          Message?  @relation("Replies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies          Message[] @relation("Replies")
+  pinned           Boolean   @default(false)
   /// True when the author used @everyone and was allowed to (so it notified the channel).
-  mentionsEveryone Boolean @default(false)
-  editedAt  DateTime?
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
+  mentionsEveryone Boolean   @default(false)
+  editedAt         DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
 
   attachments Attachment[]
   reactions   Reaction[]
@@ -210,7 +211,7 @@ model Production {
   updatedAt    DateTime         @updatedAt
 
   members       ProductionMember[]
-  guests        ProductionGuest[]
+  participants  ProductionParticipant[]
   channels      Channel[]
   tasks         Task[]
   events        Event[]
@@ -228,14 +229,18 @@ model ProductionMember {
   @@id([productionId, userId])
 }
 
-/// Someone who takes part in a production without having an account (a guest, an actor, a client...).
-model ProductionGuest {
+/// Someone who appears in the video (in front of the camera). Not the crew: that is ProductionMember.
+/// May be linked to an account, or just a name for a guest, actor or client with no account.
+model ProductionParticipant {
   id           String     @id @default(cuid())
   productionId String
   name         String
-  jobTitle     String?
+  /// What they do in the video, for example "Host" or "Guest".
+  role         String?
+  userId       String?
   createdAt    DateTime   @default(now())
   production   Production @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  user         User?      @relation("ParticipantAccount", fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([productionId])
 }
