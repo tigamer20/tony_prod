@@ -366,7 +366,7 @@ button, a, .tab, .ch-item { -webkit-tap-highlight-color: transparent; }
 .nav-count.static { position: static; }
 
 /* Bigger screens: keep pages a comfortable width instead of stretching edge to edge. */
-.content:not(.flush) > * { max-width: 1240px; margin-left: auto; margin-right: auto; }
+.content:not(.flush) > *:not(.modal-backdrop):not(.toasts) { max-width: 1240px; margin-left: auto; margin-right: auto; }
 .page-header h1 { letter-spacing: -0.01em; }
 a.stat, .prod-card, .doc-card, .card { transition: border-color .12s, background .12s, transform .12s; }
 a.stat:hover { border-color: var(--text-3); background: var(--bg-3); text-decoration: none; }
