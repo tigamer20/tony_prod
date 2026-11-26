@@ -98,6 +98,18 @@ export interface Message {
 export type ProductionStatus = "DEVELOPMENT" | "PRE_PRODUCTION" | "PRODUCTION" | "POST_PRODUCTION" | "DELIVERED" | "ARCHIVED";
 
 /** Someone who appears in the video. May be linked to an account, or just a name. */
+export type EquipmentStatus = "NEEDED" | "SECURED" | "PACKED" | "RETURNED";
+
+export interface EquipmentItem {
+  id: string;
+  name: string;
+  category: string;
+  quantity: number;
+  status: EquipmentStatus;
+  source: string | null;
+  notes: string | null;
+}
+
 export interface ProductionParticipant {
   id: string;
   name: string;

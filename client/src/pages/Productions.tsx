@@ -6,8 +6,9 @@ import { api, errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useData, useSocketEvent } from "../data";
 import { DOC_TYPES, EVENT_TYPES, STATUS_COLOR, STATUS_LABEL, fromDateInput, money, toDateInput } from "../lib";
-import type { CalEvent, DocListItem, Production, ProductionStatus } from "../types";
+import type { CalEvent, DocListItem, EquipmentItem, Production, ProductionStatus } from "../types";
 import { Avatar, Badge, Button, Empty, Field, MemberPicker, Modal, PageHeader, Participants, Spinner, useToast } from "../ui";
+import { EquipmentTab } from "./Equipment";
 import { TaskBoard } from "./Tasks";
 
 /** A date that hasn't been decided yet is stored as empty and shown as "TBD". */
@@ -93,7 +94,8 @@ export function ProductionDetail() {
   const { users, refreshProductions } = useData();
   const toast = useToast();
   const [production, setProduction] = useState<Production | null>(null);
-  const [tab, setTab] = useState<"overview" | "tasks" | "schedule" | "documents">("overview");
+  const [tab, setTab] = useState<"overview" | "tasks" | "schedule" | "equipment" | "documents">("overview");
+  const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [managingParticipants, setManagingParticipants] = useState(false);
@@ -106,6 +108,7 @@ export function ProductionDetail() {
       setProduction(await api.get<Production>(`/productions/${id}`));
       setEvents(await api.get<CalEvent[]>(`/events?productionId=${id}`));
       setDocs(await api.get<DocListItem[]>(`/documents?productionId=${id}`));
+      setEquipment(await api.get<EquipmentItem[]>(`/productions/${id}/equipment`));
     } catch {
       setMissing(true);
     }
@@ -172,7 +175,7 @@ export function ProductionDetail() {
       </section>
 
       <div className="tabs">
-        {([["overview", "Overview"], ["tasks", `Tasks (${p._count.tasks})`], ["schedule", `Schedule (${events.length})`], ["documents", `Documents (${docs.length})`]] as const).map(([k, label]) => (
+        {([["overview", "Overview"], ["tasks", `Tasks (${p._count.tasks})`], ["schedule", `Schedule (${events.length})`], ["equipment", `Equipment (${equipment.length})`], ["documents", `Documents (${docs.length})`]] as const).map(([k, label]) => (
           <button key={k} className={`tab ${tab === k ? "active" : ""}`} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
@@ -212,6 +215,10 @@ export function ProductionDetail() {
       )}
 
       {tab === "tasks" && <TaskBoard productionId={p.id} />}
+
+      {tab === "equipment" && (
+        <EquipmentTab production={p} items={equipment} canEdit={canEdit} canTick={canEdit || p.members.some((m) => m.userId === me!.id)} onChanged={load} />
+      )}
 
       {tab === "schedule" &&
         (events.length === 0 ? (

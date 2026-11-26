@@ -182,6 +182,30 @@ model Reaction {
 
 // ─── Productions & work ──────────────────────────────────────────────────
 
+/// Gear for a production: what is needed, where it comes from, and how far along getting it ready is.
+model ProductionEquipment {
+  id           String          @id @default(cuid())
+  productionId String
+  name         String
+  category     String          @default("Other")
+  quantity     Int             @default(1)
+  status       EquipmentStatus @default(NEEDED)
+  /// Where it comes from, for example "Own", or "Rental: Lens House".
+  source       String?
+  notes        String?
+  createdAt    DateTime        @default(now())
+  production   Production      @relation(fields: [productionId], references: [id], onDelete: Cascade)
+
+  @@index([productionId])
+}
+
+enum EquipmentStatus {
+  NEEDED
+  SECURED
+  PACKED
+  RETURNED
+}
+
 enum ProductionStatus {
   DEVELOPMENT
   PRE_PRODUCTION
@@ -212,6 +236,7 @@ model Production {
 
   members       ProductionMember[]
   participants  ProductionParticipant[]
+  equipment     ProductionEquipment[]
   channels      Channel[]
   tasks         Task[]
   events        Event[]

@@ -188,6 +188,72 @@ workRouter.delete("/productions/:id/participants/:participantId", async (req, re
   res.json({ ok: true });
 });
 
+// ─── Equipment ───────────────────────────────────────────────────────────
+
+const EQUIPMENT_CATEGORIES = ["Camera", "Lens", "Lighting", "Audio", "Grip", "Power & media", "Props & wardrobe", "Other"] as const;
+
+const equipmentShape = {
+  name: z.string().trim().min(1, "Enter the name of the item.").max(120),
+  category: z.enum(EQUIPMENT_CATEGORIES),
+  quantity: z.number().int().min(1).max(999),
+  status: z.enum(["NEEDED", "SECURED", "PACKED", "RETURNED"]),
+  source: z.string().trim().max(120).nullable().optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
+};
+const equipmentCreateSchema = z.object({
+  ...equipmentShape,
+  category: equipmentShape.category.default("Other"),
+  quantity: equipmentShape.quantity.default(1),
+  status: equipmentShape.status.default("NEEDED"),
+});
+// Defaults must not apply to edits, or a partial update would reset the fields it doesn't mention.
+const equipmentPatchSchema = z.object(equipmentShape).partial();
+
+const equipmentSelect = { id: true, name: true, category: true, quantity: true, status: true, source: true, notes: true } as const;
+
+workRouter.get("/productions/:id/equipment", async (req, res) => {
+  const production = await prisma.production.findUnique({ where: { id: param(req, "id") }, select: { id: true } });
+  if (!production) throw notFound("Production not found.");
+  res.json(await prisma.productionEquipment.findMany({ where: { productionId: production.id }, orderBy: [{ category: "asc" }, { createdAt: "asc" }], select: equipmentSelect }));
+});
+
+workRouter.post("/productions/:id/equipment", async (req, res) => {
+  const existing = await assertCanEditProduction(req.user!, param(req, "id"));
+  const body = parse(equipmentCreateSchema, req.body);
+  const item = await prisma.productionEquipment.create({
+    data: { productionId: existing.id, ...body, source: body.source || null, notes: body.notes || null },
+    select: equipmentSelect,
+  });
+  emitAll("productions:changed", {});
+  res.status(201).json(item);
+});
+
+workRouter.patch("/productions/:id/equipment/:itemId", async (req, res) => {
+  const user = req.user!;
+  const production = await prisma.production.findUnique({ where: { id: param(req, "id") }, include: { members: { select: { userId: true } } } });
+  if (!production) throw notFound("Production not found.");
+  const manager = can(user, "productions.manage") || production.createdById === user.id;
+  const onCrew = production.members.some((m) => m.userId === user.id);
+  const body = parse(equipmentPatchSchema, req.body);
+  // Anyone on the crew can move an item along (secured, packed, returned); only managers change what the item is.
+  const onlyStatus = Object.keys(body).every((k) => k === "status");
+  if (!manager && !(onCrew && onlyStatus)) throw forbidden("Only the production's creator or a manager can change the equipment list.");
+  const result = await prisma.productionEquipment.updateMany({
+    where: { id: param(req, "itemId"), productionId: production.id },
+    data: { ...body, ...(body.source !== undefined ? { source: body.source || null } : {}), ...(body.notes !== undefined ? { notes: body.notes || null } : {}) },
+  });
+  if (result.count === 0) throw notFound("Item not found.");
+  emitAll("productions:changed", {});
+  res.json({ ok: true });
+});
+
+workRouter.delete("/productions/:id/equipment/:itemId", async (req, res) => {
+  const existing = await assertCanEditProduction(req.user!, param(req, "id"));
+  await prisma.productionEquipment.deleteMany({ where: { id: param(req, "itemId"), productionId: existing.id } });
+  emitAll("productions:changed", {});
+  res.json({ ok: true });
+});
+
 // ─── Tasks ───────────────────────────────────────────────────────────────
 
 const taskInclude = {

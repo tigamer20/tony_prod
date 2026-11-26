@@ -53,6 +53,23 @@ function Shell() {
   const { pathname } = useLocation();
   const flush = pathname.startsWith("/chat") || /^\/documents\/[^/]+/.test(pathname);
 
+  // On iPhone the keyboard shrinks only the visible area, so size the app to that and keep the page from sliding up.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const fit = () => {
+      document.documentElement.style.setProperty("--app-h", `${Math.round(vv.height)}px`);
+      if (vv.offsetTop > 0) window.scrollTo(0, 0);
+    };
+    fit();
+    vv.addEventListener("resize", fit);
+    vv.addEventListener("scroll", fit);
+    return () => {
+      vv.removeEventListener("resize", fit);
+      vv.removeEventListener("scroll", fit);
+    };
+  }, []);
+
   // The phone's "More" sheet closes whenever you move to another page.
   useEffect(() => setMore(false), [pathname]);
 

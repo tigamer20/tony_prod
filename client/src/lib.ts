@@ -52,6 +52,15 @@ export const STATUS_COLOR: Record<string, string> = {
   ARCHIVED: "#80848e",
 };
 
+export const EQUIPMENT_CATEGORIES = ["Camera", "Lens", "Lighting", "Audio", "Grip", "Power & media", "Props & wardrobe", "Other"] as const;
+
+export const EQUIPMENT_STATUS = {
+  NEEDED: { label: "To get", color: "#f6a23c" },
+  SECURED: { label: "Secured", color: "#38bdf8" },
+  PACKED: { label: "Packed", color: "#2dd4bf" },
+  RETURNED: { label: "Returned", color: "#9aa7b2" },
+} as const;
+
 export const EVENT_TYPES: Record<string, { label: string; color: string }> = {
   SHOOT: { label: "Shoot", color: "#ed4245" },
   MEETING: { label: "Meeting", color: "#5865f2" },

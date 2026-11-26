@@ -27,6 +27,9 @@ calendar, productions, tasks, announcements, and documents with import and expor
   in the video (in front of the camera), and so does the Home dashboard. Participants are separate from the crew
   (the team members working on the production) and can be people with an account or just a name (a guest, an
   actor, a client); those without an account can't sign in or be notified.
+- **Equipment** – a gear list on each project (cameras, lenses, lights, audio, grip, power & media, props), with quantity,
+  where it comes from, notes and a status (To get, Secured, Packed, Returned) and a packing progress bar. Managers edit the
+  list; anyone on the crew can move an item along.
 - **Tasks** – drag-and-drop board (To do / In progress / In review / Done) with priorities, due dates and assignees.
 - **Announcements** – priorities, pinning, read receipts, live toast notifications.
 - **Documents** – rich-text editor with tables, autosave, version history and restore, templates (call sheet,
@@ -35,6 +38,9 @@ calendar, productions, tasks, announcements, and documents with import and expor
   Type `@` in a document to mention a teammate who can open it.
 - **Mentions** – anyone mentioned in chat or in a document gets a live pop-up and an entry in the Mentions section
   of their Home dashboard (with an unread badge). Opening the channel or clicking the entry marks it read.
+
+- **On the phone** – a bottom tab bar with a "More" sheet, sheet-style dialogs, and an app-like layout. On an iPhone, open the site in
+  Safari, tap Share, then *Add to Home Screen* for a full-screen app with its own icon.
 
 ## Roles & permissions
 
