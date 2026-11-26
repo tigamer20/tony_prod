@@ -1,4 +1,5 @@
 import { prisma } from "./db.js";
+import { normalizeStoredJobTitles } from "./lib/jobTitles.js";
 import { DEFAULT_ROLES } from "./permissions.js";
 
 /** Idempotent first-run setup: default roles and starter channels. Never overwrites edits. */
@@ -29,4 +30,7 @@ export async function ensureDefaults() {
       ],
     });
   }
+
+  // Job titles that match a role should be spelled like the role (accents included).
+  await normalizeStoredJobTitles();
 }

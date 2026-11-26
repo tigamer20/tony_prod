@@ -14,6 +14,7 @@ import {
 import { prisma } from "../db.js";
 import { badRequest, HttpError, parse } from "../lib/http.js";
 import { AVATAR_COLORS, memberDetailSelect } from "../lib/serialize.js";
+import { canonicalJobTitle } from "../lib/jobTitles.js";
 
 export const authRouter = Router();
 
@@ -159,7 +160,8 @@ const profileSchema = z.object({
 
 authRouter.patch("/me", requireAuth, async (req, res) => {
   const data = parse(profileSchema, req.body);
-  await prisma.user.update({ where: { id: req.user!.id }, data });
+  const jobTitle = data.jobTitle !== undefined ? { jobTitle: await canonicalJobTitle(data.jobTitle) } : {};
+  await prisma.user.update({ where: { id: req.user!.id }, data: { ...data, ...jobTitle } });
   res.json(await mePayload(req.user!.id));
 });
 

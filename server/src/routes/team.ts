@@ -8,6 +8,7 @@ import { badRequest, forbidden, HttpError, notFound, param, parse } from "../lib
 import { AVATAR_COLORS, memberDetailSelect, publicUserSelect } from "../lib/serialize.js";
 import { ALL_PERMISSION_KEYS, PERMISSION_CATALOG } from "../permissions.js";
 import { disconnectUser, emitAll, onlineUserIds } from "../realtime.js";
+import { canonicalJobTitle } from "../lib/jobTitles.js";
 
 export const teamRouter = Router();
 
@@ -54,7 +55,11 @@ teamRouter.patch("/users/:id", requirePerm("members.manage"), async (req, res) =
   const { roleIds, ...rest } = body;
   const updated = await prisma.user.update({
     where: { id: target.id },
-    data: { ...rest, ...(roleIds ? { roles: { set: roleIds.map((id) => ({ id })) } } : {}) },
+    data: {
+      ...rest,
+      ...(rest.jobTitle !== undefined ? { jobTitle: await canonicalJobTitle(rest.jobTitle) } : {}),
+      ...(roleIds ? { roles: { set: roleIds.map((id) => ({ id })) } } : {}),
+    },
     select: memberDetailSelect,
   });
   // A disabled account must stop receiving live updates right away, not at its next reconnect.
@@ -115,7 +120,7 @@ teamRouter.post("/users", requirePerm("members.manage"), async (req, res) => {
       username: body.username,
       displayName: body.displayName,
       email: body.email ?? null,
-      jobTitle: body.jobTitle ?? null,
+      jobTitle: await canonicalJobTitle(body.jobTitle),
       passwordHash: await bcrypt.hash(body.password, 12),
       // The admin chose this password, so the member must replace it the first time they sign in.
       mustChangePassword: true,

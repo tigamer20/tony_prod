@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { badRequest, forbidden, notFound, param, parse, slugify } from "../lib/http.js";
 import { miniUserSelect } from "../lib/serialize.js";
 import { emitAll, emitToUsers } from "../realtime.js";
+import { canonicalJobTitle } from "../lib/jobTitles.js";
 
 export const workRouter = Router();
 
@@ -115,8 +116,8 @@ workRouter.post("/productions/:id/members", async (req, res) => {
   if (!(await prisma.user.findFirst({ where: { id: body.userId, status: "ACTIVE" } }))) throw badRequest("Unknown member.");
   await prisma.productionMember.upsert({
     where: { productionId_userId: { productionId: existing.id, userId: body.userId } },
-    create: { productionId: existing.id, userId: body.userId, jobTitle: body.jobTitle ?? null },
-    update: { jobTitle: body.jobTitle ?? null },
+    create: { productionId: existing.id, userId: body.userId, jobTitle: await canonicalJobTitle(body.jobTitle) },
+    update: { jobTitle: await canonicalJobTitle(body.jobTitle) },
   });
   emitAll("productions:changed", {});
   res.json({ ok: true });
